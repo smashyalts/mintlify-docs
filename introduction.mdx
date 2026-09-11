@@ -1,71 +1,60 @@
 ---
-title: Introduction
-description: 'Welcome to the home of your new documentation'
+title: "Introduction"
+description: "One Minecraft world, several Paper servers, and a border you can walk across"
+icon: "map"
 ---
 
-<img
-  className="block dark:hidden"
-  src="/images/hero-light.svg"
-  alt="Hero Light"
-/>
-<img
-  className="hidden dark:block"
-  src="/images/hero-dark.svg"
-  alt="Hero Dark"
-/>
+Atlas cuts one Minecraft world into a fixed grid of square regions and gives each region to exactly one Paper server. A Velocity proxy in front moves players between those servers as they walk. Done well, nobody can tell: you see the players and mobs on the other side of a border before you reach it, blocks you break near the line appear on the neighbour's copy, and stepping over costs no loading screen.
 
-## Setting up
+The hard part is not the moving. It is making sure that at no instant do two servers both believe they own the same player, and that a slow server cannot overwrite what a faster one already did.
 
-The first step to world-class documentation is setting up your editing environments.
+## The four ideas
 
 <CardGroup cols={2}>
-  <Card
-    title="Edit Your Docs"
-    icon="pen-to-square"
-    href="https://mintlify.com/docs/quickstart"
-  >
-    Get your docs set up locally for easy development
+  <Card title="Grid and regions" icon="grid" href="/concepts/grid-and-ownership">
+    A region is a square of the world. Exactly one server may write the blocks and entities inside it.
   </Card>
-  <Card
-    title="Preview Changes"
-    icon="image"
-    href="https://mintlify.com/docs/development"
-  >
-    Preview your changes before you push to make sure they're perfect
+  <Card title="Fenced leases" icon="lock" href="/concepts/grid-and-ownership">
+    A player's ownership is a token in MongoDB, compared and advanced in one atomic update.
+  </Card>
+  <Card title="The ghost band" icon="ghost" href="/concepts/ghosts-and-blocks">
+    A strip either side of every border where each server shows the other's players, mobs and blocks.
+  </Card>
+  <Card title="The crossing" icon="person-walking" href="/concepts/crossing">
+    A handoff committed in one database write, then a proxy switch the client never sees.
   </Card>
 </CardGroup>
 
-## Make it yours
+## What you get
 
-Update your docs to your brand and add valuable content for the best user conversion.
+A world larger than one server can simulate, without sacrificing the thing that makes it a world. Players near a border see each other and can fight, build and talk across it. A region that dies takes its own square offline and nothing else. A region can be restarted, patched or moved while the rest of the network keeps running.
+
+## What it costs
+
+Atlas is honest about this, because the trade-offs are what decide whether it fits.
+
+<AccordionGroup>
+  <Accordion title="Every shard needs its own copy of the same world">
+    Chunk decoration is not a pure function of the seed, so servers generating "the same" world disagree about where the trees are. The world is generated once and copied, which means the disk cost multiplies by the number of shards.
+  </Accordion>
+  <Accordion title="It is pinned to one server build">
+    The plugin compiles against the Mojang-mapped server for the handful of things Bukkit does not expose: rewriting an entity id, neutralising the login teleport, reading outgoing block updates, the advancement file. A different Paper build family will not run it.
+  </Accordion>
+  <Accordion title="Interactions do not cross a border">
+    Breaking, placing and hitting are forwarded to the region's owner and work. Containers, doors and anything with a screen stay refused, because a live inventory session against a block on another server is how you get duplicated items.
+  </Accordion>
+  <Accordion title="A kick is the recovery of last resort">
+    A lost lease, an unrevertable handoff or a stale fence kicks the player with a message asking them to reconnect. Reconnecting lands them on the right shard with the right state. It is ugly and it is always correct.
+  </Accordion>
+</AccordionGroup>
+
+## Where to go next
 
 <CardGroup cols={2}>
-  <Card
-    title="Customize Style"
-    icon="palette"
-    href="https://mintlify.com/docs/settings/global"
-  >
-    Customize your docs to your company's colors and brands
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    The smallest network that actually works, in about twenty minutes.
   </Card>
-  <Card
-    title="Reference APIs"
-    icon="code"
-    href="https://mintlify.com/docs/api-playground/openapi"
-  >
-    Automatically generate endpoints from an OpenAPI spec
-  </Card>
-  <Card
-    title="Add Components"
-    icon="screwdriver-wrench"
-    href="https://mintlify.com/docs/components/accordion"
-  >
-    Build interactive features and designs to guide your users
-  </Card>
-  <Card
-    title="Get Inspiration"
-    icon="stars"
-    href="https://mintlify.com/customers"
-  >
-    Check out our showcase of our favorite documentation
+  <Card title="Requirements" icon="clipboard-check" href="/deploy/requirements">
+    What you need before you start, and how many servers it really is.
   </Card>
 </CardGroup>

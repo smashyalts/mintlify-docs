@@ -1,0 +1,98 @@
+{
+  "theme": "mint",
+  "name": "Starter Kit",
+  "colors": {
+    "primary": "#0D9373",
+    "light": "#07C983",
+    "dark": "#0D9373"
+  },
+  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Support",
+        "href": "mailto:hi@mintlify.com"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Dashboard",
+      "href": "https://dashboard.mintlify.com"
+    }
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/mintlify",
+      "github": "https://github.com/mintlify",
+      "linkedin": "https://linkedin.com/company/mintlify"
+    }
+  },
+  "navigation": {
+    "global": {
+      "anchors": [
+        {
+          "anchor": "Documentation",
+          "icon": "book-open-cover",
+          "href": "https://mintlify.com/docs"
+        },
+        {
+          "anchor": "Community",
+          "icon": "slack",
+          "href": "https://mintlify.com/community"
+        },
+        {
+          "anchor": "Blog",
+          "icon": "newspaper",
+          "href": "https://mintlify.com/blog"
+        }
+      ]
+    },
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "icon": "diagram-project",
+            "pages": []
+          },
+          {
+            "group": "Deploying",
+            "icon": "server",
+            "pages": []
+          },
+          {
+            "group": "Operating",
+            "icon": "gauge",
+            "pages": []
+          },
+          {
+            "group": "Reference",
+            "icon": "book",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Plugin API",
+            "icon": "plug",
+            "pages": []
+          }
+        ]
+      }
+    ]
+  }
+}
