@@ -1,0 +1,75 @@
+---
+title: "The change log"
+description: "Who did what, where, and putting it back"
+icon: "clock-rotate-left"
+---
+
+`/audit` is shaped like the tool everyone already knows: an inspector you toggle and click with, and lookup, rollback and restore over a radius and a time window. What is different is invisible from in game. The rows come from every shard in the mesh, and a rollback that crosses a border is carried out by the shard on the other side rather than refused.
+
+## Commands
+
+```
+/audit inspect
+/audit lookup   <radius> <time> [actor]
+/audit rollback <radius> <time> [actor]
+/audit restore  <radius> <time> [actor]
+/audit status
+```
+
+`time` is `30m`, `2h`, `3d`, `1w`. `radius` is 1 to 512 blocks, centred on you; the selection is full height, because grief is vertical. `actor` is a player name, a uuid, or a pseudo-actor.
+
+The inspector left-clicks a block for its history and right-clicks to inspect the space in front of it, so a block that is gone can still be looked up from where it used to be.
+
+## Why lookup is global and rollback is not
+
+Every shard writes into one collection, so **finding** what happened needs no coordination at all: any shard answers for the whole world in one query, including regions homed on another continent.
+
+**Applying** does. A shard may only write blocks inside the region it owns, and a selection that straddles a border covers ground belonging to somebody else. So a rollback splits by region, each owner runs its own slice against its own copy of the world, and the initiator adds up the answers.
+
+Regions with no live owner are reported rather than skipped quietly. A rollback that silently covered three quarters of the ground is worse than one that says which quarter it missed.
+
+## What is recorded
+
+| Action | Actor | Reversible |
+| --- | --- | --- |
+| `break` | player | Yes, with container contents and sign text |
+| `place` | player | Yes |
+| `burn` | `#fire` | Yes |
+| `explode` | `#creeper`, `#tnt` | Yes |
+| `bucket` | player | Yes |
+| `sign` | player | Yes, front and back |
+| `container_add` / `container_remove` | player | Yes, items are put back or taken out |
+| `kill` | player | **No** — counted as skipped rather than reported as undone |
+
+Things that are not players get a readable pseudo-actor with a leading `#`, so `/audit rollback 30 1h #creeper` is a question you can ask, and it can never collide with a real uuid.
+
+<Note>
+Container contents are snapshotted when a player opens a container and diffed when they close it. That costs one snapshot per open instead of a row per click, which matters on a hopper-heavy server. The trade is worth stating: a player who takes an item and puts it back before closing leaves no row.
+</Note>
+
+### Not covered
+
+Entity damage other than kills, item frames and armour stands, and anything a plugin does through the API without firing an event. Nothing here reconstructs a mob.
+
+## Bounds
+
+Rows are written in batches off the main thread, and a rollback applies in slices of 200 blocks per tick so a large one costs a long wait rather than a frozen server.
+
+One shard fetches at most 200,000 rows per rollback. That is a bound on memory, not a loss: a row is marked only once it has been applied and the query selects on that mark, so running the same command again continues where it stopped rather than repeating.
+
+Retention is a delete, not a display window. Lowering it removes history at MongoDB's next sweep. Budget roughly a kilobyte per recorded change.
+
+## This is not the block journal
+
+The journal behind the ghost band looks superficially similar and can do none of this.
+
+| | Block journal | Audit log |
+| --- | --- | --- |
+| Keyed by | Position, overwritten in place | Append-only, one row per change |
+| History | None, current state only | Full |
+| Before state | No | Yes |
+| Actor | No | Yes |
+| Coverage | Ghost bands only | The whole region |
+| Bounded by | Distinct modified band positions | Retention |
+
+The journal's properties are right for its job, and every one of them rules out rollback. Making one collection do both would cost it either its bound or its history.

@@ -1,0 +1,77 @@
+---
+title: "Grid and ownership"
+description: "Who owns a block, who owns a player, and what stops two servers both believing they do"
+icon: "grid"
+---
+
+Two different things are owned, in two different ways. Ground is owned statically, by arithmetic every node agrees on. Players are owned dynamically, by a token in a database.
+
+## The grid
+
+A grid is three numbers: `region-size`, `regions-x` and `regions-z`. It is centred on the origin, so borders fall on multiples of the region size.
+
+```
+originX = -(regionsX * regionSize) / 2
+region  = gz * regionsX + gx    where gx = floor((x - originX) / regionSize)
+```
+
+Region `i` covers a half-open square, so a block sitting exactly on a border line belongs to exactly one region and never to both. Regions are numbered row-major from the north-west corner:
+
+```
+        x=0   x=1
+ z=0  [  0 ][  1 ]
+ z=1  [  2 ][  3 ]
+```
+
+Outside the grid nobody owns anything. Players are pushed back in, entities that wander out are removed, and the region index is reported as -1.
+
+<Warning>
+The grid must be identical on every shard and every proxy. A node that disagrees routes players to a server that does not own where they are standing, and nothing detects the mismatch for you. Leaving all three unset so everyone takes the same defaults is the safest way to keep them in step.
+</Warning>
+
+Changing the grid later is a full restart of the network, not a rolling one: the region a standing player belongs to changes index.
+
+## Two distances
+
+Most of the system is driven by two measurements. The distance from a point to its own region's nearest edge decides when to warm up a neighbour and which blocks are worth mirroring. The distance from a point to another region's rectangle, zero inside it, decides whether something belongs in that neighbour's ghost band.
+
+The ghost band must be no wider than a quarter of a region, or opposite bands of the same region overlap and a shard starts mirroring its own mirrored blocks. The configuration refuses to start otherwise.
+
+## The fenced lease
+
+A player is one document in MongoDB carrying an owner, a fence, a sequence number and an expiry.
+
+```
+{
+  _id:       "<uuid>",
+  owner:     "geo:world:region" | null,
+  fence:     long,     // +1 on every ownership change
+  seq:       long,     // +1 on every save
+  expiresAt: Date,
+  snapshot:  { ... },
+  transfer:  { to, from, token, at } | null
+}
+```
+
+Four rules make it safe:
+
+<Steps>
+  <Step title="Only the owner writes, and only with the current fence">
+    Every update filters on both. A late write from a shard that has lost the player matches nothing, returns empty, and the caller stops rather than clobbering the new owner's state.
+  </Step>
+  <Step title="A handoff is one update">
+    Storing the snapshot, moving ownership, bumping the fence and writing the transfer marker all happen in a single atomic update. There is no instant where the state and the ownership disagree.
+  </Step>
+  <Step title="A lease expires">
+    A shard that crashes stops renewing. Once the expiry passes another shard may take over, and its higher fence fences off the zombie if it ever comes back.
+  </Step>
+  <Step title="A revert only works before the target claims it">
+    Undoing a handoff matches on the exact fence the handoff produced. The moment the target acquires, that fence has moved, so a source and a target can never both conclude they hold the player.
+  </Step>
+</Steps>
+
+## Why this needs no transactions
+
+Every one of those is a single-document update, and single-document atomicity is something every MongoDB deployment provides, standalone included. Atlas asks the server what it is on startup and reads with `majority` on a replica set or `local` on a standalone, which is the same guarantee on one node rather than a weaker one.
+
+The only thing a standalone gives up is the multi-document transaction helper offered to other plugins. Nothing in the crossing path uses it.

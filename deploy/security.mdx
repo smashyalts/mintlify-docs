@@ -1,0 +1,71 @@
+---
+title: "Security"
+description: "Locking the shards to the proxy, and why getting it wrong is silent"
+icon: "shield"
+---
+
+Every shard runs behind the proxy, which means every shard runs with `online-mode=false`. On its own that is an open door: anyone who can reach a shard directly can connect as any username, including one with operator rights, because nothing is checking Mojang any more.
+
+Two things have to be true. Neither is specific to Atlas; this is the standard Velocity setup, written down because getting it wrong produces no error.
+
+## 1. Modern forwarding, with the secret on both sides
+
+<CodeGroup>
+```toml velocity.toml
+player-info-forwarding-mode = "modern"
+forwarding-secret-file = "forwarding.secret"
+```
+
+```yaml config/paper-global.yml
+proxies:
+  velocity:
+    enabled: true
+    online-mode: true
+    secret: <the same secret>
+```
+</CodeGroup>
+
+With this, a shard rejects any connection that did not come through the proxy carrying the secret, and the player identity it receives is the one Velocity authenticated against Mojang.
+
+Set it on **every shard and the hub**, not just the shards.
+
+## 2. The shards must not be reachable from the internet
+
+Forwarding is the lock; not exposing the door is the belt. Only the proxy port should be public.
+
+On a VPS that is a firewall rule per shard. **On a panel host you often cannot close the port**, because every server you rent gets its own public address. Then the forwarding secret is doing all of the work.
+
+<Warning>
+A leaked or unset forwarding secret is a full compromise of the network. Treat it like a password: unique per network, not shared with anything else, not in a screenshot, not in a support ticket.
+</Warning>
+
+The proxy itself keeps `online-mode = true`. That is what authenticates players in the first place.
+
+## Permissions
+
+| Node | Grants |
+| --- | --- |
+| `atlas.shard.admin` | The whole `/shard` command, and the default for the diagnostic overlays. |
+| `atlas.audit.use` | Reading the change log: `inspect`, `lookup`, `status`. |
+| `atlas.audit.rollback` | Rewriting the world: `rollback`, `restore`. |
+
+Reading and rewriting are separate on purpose. Somebody who should be able to see who broke a wall is not automatically somebody who should be able to rewrite the world.
+
+## Database credentials
+
+MongoDB and Redis are the whole network's state. Anyone who can write to them can move players, change who owns a region, and read every inventory.
+
+<CardGroup cols={2}>
+  <Card title="Authenticate both" icon="key">
+    Put credentials in the URIs. An unauthenticated Redis on a shared host is reachable by every other tenant on it.
+  </Card>
+  <Card title="One Redis per network" icon="database">
+    Keys are not namespaced by tenant. Two networks on one Redis overwrite each other's routing, and the symptom is misrouted players rather than an error.
+  </Card>
+</CardGroup>
+
+## A note on the plugin API
+
+The cross-shard edit path trusts arithmetic from a peer: when a player hits a mob across a border, the damage is computed on their shard and applied on the owner's. That is fine between shards of one deployment and would not be if they were separate operators. The receiving side refuses values that are not finite, are negative, or are implausibly large, but it does not otherwise second-guess a peer.
+
+Do not build a network out of shards you do not control.

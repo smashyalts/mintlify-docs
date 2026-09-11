@@ -1,0 +1,80 @@
+---
+title: "Player data"
+description: "Making your state travel with the player"
+icon: "suitcase"
+---
+
+Anything your plugin keeps per player has the same problem the inventory had: it belongs to one server, and walking two hundred blocks puts the player on a different one with no memory of it.
+
+A `PlayerDataAdapter` puts your state in the player record, so it is written atomically with the inventory and travels on every crossing, every geo handover and every relog.
+
+```java
+public final class MyPlugin extends JavaPlugin implements PlayerDataAdapter {
+
+    private final Map<UUID, JsonObject> state = new ConcurrentHashMap<>();
+
+    @Override
+    public String key() {
+        return "myplugin:quests";
+    }
+
+    @Override
+    public JsonObject save(Player player) {
+        return state.get(player.getUniqueId());   // null stores nothing
+    }
+
+    @Override
+    public void load(Player player, JsonObject data) {
+        state.put(player.getUniqueId(), data == null ? new JsonObject() : data.deepCopy());
+    }
+
+    @Override
+    public void onEnable() {
+        ShardAPI.get().registerPlayerData(this);
+    }
+
+    @Override
+    public void onDisable() {
+        ShardAPI.get().unregisterPlayerData(key());
+    }
+}
+```
+
+## When each half runs
+
+`save` is called on the main thread immediately before a snapshot is taken: on a crossing, on the periodic save, and on quit. `load` is called on the main thread once the player has arrived and their vanilla state is applied, and before the arrival event fires. It receives null for a player this adapter has never seen.
+
+<Warning>
+If `load` throws, the session still goes live and the next save persists whatever your plugin defaults to. An unreadable inventory is a bad arrival; an unreadable adapter that also zeroes somebody's balance is a data loss. Make `load` total.
+</Warning>
+
+## Keep it small
+
+This is JSON inside a database document that is written on every crossing, not a database of your own. A few hundred bytes is fine, a few hundred kilobytes is not — it rides on every handoff and is re-sent on every save.
+
+For anything larger, reference it by id and keep the rows in your own collection:
+
+```java
+MongoCollection<Document> mine = shard.store().collection(this, "quests");
+```
+
+The collection is namespaced to your plugin so two plugins cannot collide. Calls to it block, so use `shard.scheduler().async(...)`.
+
+## Changing state together
+
+If two documents must change as one — an economy transfer, a trade — use the transaction helper:
+
+```java
+shard.store().transaction(session -> {
+    // pass the session to every call inside
+    return null;
+});
+```
+
+<Note>
+This needs a replica set. On a standalone it fails loudly rather than half-applying, which is the right failure. Nothing in the crossing path uses it, so a standalone is otherwise fully supported.
+</Note>
+
+## Per-player preferences
+
+The same mechanism is how the built-in overlays remember themselves. `/shard bar` and `/shard walls` are stored through an adapter, which is why they follow a player across borders and geos rather than resetting at each one. If you are building something a player toggles, do the same thing.

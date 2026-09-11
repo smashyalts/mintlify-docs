@@ -1,0 +1,63 @@
+---
+title: "Limitations"
+description: "Properties of the current code, not bugs waiting for a report"
+icon: "triangle-exclamation"
+---
+
+## Design
+
+<AccordionGroup>
+  <Accordion title="Interactions do not cross a border">
+    Breaking, placing and hitting are forwarded to the region's owner and work. Containers, doors, anvils and anything with a screen or a state machine stay refused. Opening a container on another server is not a block edit with extra steps: it is a live inventory session against a block this server cannot hold a reference to, and half-implementing it is how you get duplicated items.
+  </Accordion>
+  <Accordion title="One grid per deployment">
+    Every world in a deployment shares the configured grid. There is no per-world grid and no dynamic resizing, and changing the grid is a full restart of the network.
+  </Accordion>
+  <Accordion title="Player ghosts are mannequins">
+    They are not player entities. They do not appear in the tab list and plugins cannot treat them as players.
+  </Accordion>
+  <Accordion title="Chunks past the ghost band still generate">
+    Under the player's view distance. Nothing spawns or changes there and nothing is mirrored, so they are scenery that will not match the owner's edits.
+  </Accordion>
+  <Accordion title="A protection plugin on the owning shard never sees a forwarded edit">
+    There is no player object there to check. A mesh-wide claims system has to hook the Atlas API rather than the Bukkit event.
+  </Accordion>
+</AccordionGroup>
+
+## Correctness edges
+
+<AccordionGroup>
+  <Accordion title="A duplicate entity is possible after every acknowledgement is lost">
+    An entity crossing is retried three times against a dedup key on the target. If the target spawned it and every acknowledgement was lost, the source restores its own copy and logs a warning naming the uid. That is the one path that can leave two of something.
+  </Accordion>
+  <Accordion title="Kicks are the recovery of last resort">
+    A stale lease, a handoff that cannot be reverted, or a lost lease renewal kicks the player asking them to reconnect. Reconnecting lands them on the correct shard with the correct state. It is ugly and it is always correct.
+  </Accordion>
+  <Accordion title="Kill credit across a border is best effort">
+    A projectile carries its owner, and a death within ten seconds of the last off-shard hit is credited. Outside that window, or if the killer has gone offline, the kill is simply not awarded.
+  </Accordion>
+  <Accordion title="A drained player can lose the last minute">
+    Autosaves are once a minute per player. An unclean stop — killing the process rather than draining — loses whatever happened since.
+  </Accordion>
+</AccordionGroup>
+
+## Operational
+
+<AccordionGroup>
+  <Accordion title="Pinned to one server build">
+    The plugin compiles against the Mojang-mapped server for the things Bukkit does not expose. A different Paper build family fails at startup rather than degrading.
+  </Accordion>
+  <Accordion title="One Redis per network">
+    Keys are under a common prefix but are not namespaced per network. Two networks on one Redis overwrite each other's routing, and the symptom is misrouted players rather than an error. Use separate instances or separate database numbers.
+  </Accordion>
+  <Accordion title="A cross-geo crossing may not be seamless">
+    Inside a geo the client keeps its world and there is no loading screen. Across geos the proxy bridges when it can, which is also seamless, and otherwise falls back to a client transfer, which is a full reconnect.
+  </Accordion>
+  <Accordion title="Two servers for one region would diverge">
+    The fence keeps player state safe, but both would write blocks and both would mirror, and the world itself would diverge with nothing to reconcile it. Whatever starts your shards must guarantee one process per region.
+  </Accordion>
+</AccordionGroup>
+
+## Testing
+
+The unit suite covers the lease against a real MongoDB, the grid, mesh routing and the configuration layout. There is no automated coverage of the Paper or Velocity plugins, and no automated test walks a player across a border — no headless client speaks the pinned protocol version yet. The [container network](/operate/testing) covers startup, configuration, self-registration and recovery, and a crossing still needs a person.

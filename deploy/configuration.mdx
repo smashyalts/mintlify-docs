@@ -1,0 +1,105 @@
+---
+title: "Configuration"
+description: "Every setting, what it does, and which ones must match across the network"
+icon: "sliders"
+---
+
+Configuration is a flat map of `SHARD_*` keys. On Kubernetes that map is the environment; everywhere else it is the environment with `config.yml` merged over it. The file wins.
+
+The file accepts two shapes, in the same file at the same time. Sections are the readable one and what the starter template uses; the flat keys are what the environment uses and what anybody copying a value out of a Helm chart will paste.
+
+<CodeGroup>
+```yaml Sections
+shard:
+  geo: main
+  world: world
+  region: 0
+grid:
+  region-size: 2048
+```
+
+```yaml Flat
+SHARD_GEO: main
+SHARD_WORLD: world
+SHARD_REGION: 0
+SHARD_GRID_REGION_SIZE: 2048
+```
+</CodeGroup>
+
+## Identity
+
+| Path | Variable | Default | Meaning |
+| --- | --- | --- | --- |
+| `shard.geo` | `SHARD_GEO` | *required* | The name of this network. Any short word, the same everywhere. |
+| `shard.world` | `SHARD_WORLD` | unset | Must equal the world folder, which means it must equal `level-name`. Shards only. |
+| `shard.region` | `SHARD_REGION` | unset | Which square this server owns. Shards only. |
+| `shard.name` | `SHARD_SERVER_NAME` | `<world>-r<region>` | The name the proxy knows this server by. |
+| `shard.address` | `SHARD_ADDRESS` | unset | Where the proxy dials this server. Set it and the shard registers itself. |
+| `proxy.name` | `SHARD_PROXY_NAME` | hostname | This proxy's name, if you run more than one. |
+| `proxy.hub` | `SHARD_HUB_PREFIX` | `hub-` | The hub's server name. Matches `hub` too. |
+
+<Warning>
+The shard refuses to start if `shard.world` names a world that is not loaded. A shard owning a region of a world it cannot see would accept players and drop them into nothing.
+</Warning>
+
+## Databases
+
+| Path | Variable | Default |
+| --- | --- | --- |
+| `database.mongo.uri` | `SHARD_MONGO_URI` | `mongodb://localhost:27017/` |
+| `database.mongo.database` | `SHARD_MONGO_DB` | `atlas_shard` |
+| `database.redis.uri` | `SHARD_REDIS_URI` | `redis://localhost:6379` |
+
+## The grid
+
+These three decide which region a given block belongs to.
+
+| Path | Variable | Default | Constraint |
+| --- | --- | --- | --- |
+| `grid.region-size` | `SHARD_GRID_REGION_SIZE` | `2048` | At least 256, a multiple of 16 |
+| `grid.regions-x` | `SHARD_GRID_REGIONS_X` | `2` | At least 1 |
+| `grid.regions-z` | `SHARD_GRID_REGIONS_Z` | `2` | At least 1 |
+
+<Warning>
+Identical on every shard and every proxy. A server that disagrees routes players to a shard that does not own where they are standing. Leaving all three unset is the safest way to keep them in step.
+</Warning>
+
+## Tuning
+
+The defaults are the tested ones. There is no reward for changing them until something specific is wrong.
+
+| Path | Variable | Default | Meaning |
+| --- | --- | --- | --- |
+| `tuning.ghost-width` | `SHARD_GHOST_WIDTH` | `64` | Width of the band either side of a border. At least 16, at most a quarter of the region size. |
+| `tuning.ghost-max-per-frame` | `SHARD_GHOST_MAX_PER_FRAME` | `160` | Entities one frame may describe. Zero or less removes the limit rather than lowering it. |
+| `tuning.prepare-margin` | `SHARD_PREPARE_MARGIN` | `24` | How far from a border the neighbour is warmed up. At least 4. |
+| `tuning.lease-ttl-seconds` | `SHARD_LEASE_TTL_SECONDS` | `30` | Player lease TTL. Renewed at a third of it. |
+| `tuning.transfer-timeout-millis` | `SHARD_TRANSFER_TIMEOUT_MILLIS` | `8000` | How long to wait for a handoff to be acknowledged. |
+| `tuning.heartbeat-seconds` | `SHARD_HEARTBEAT_SECONDS` | `5` | Topology heartbeat. A shard is stale after three of these. |
+| `tuning.pre-open` | `SHARD_PREOPEN` | `false` | Open the backend connection before the border. |
+| `tuning.chunk-send-rate` | `SHARD_CHUNK_SEND_RATE` | unlimited | Chunks a second to an arriving player, or `keep` to leave the server's own setting alone. |
+| `tuning.arrival-trace` | `SHARD_ARRIVAL_TRACE` | `0` | Log this many movement reports after an arrival. Diagnostics only. |
+
+<Note>
+Atlas removes Paper's chunk send rate limit by default. Entities are only sent once their chunk is, so the limit is what makes mobs appear a second after a crossing. On a metered link, set `keep`.
+</Note>
+
+## Audit
+
+| Path | Variable | Default |
+| --- | --- | --- |
+| `audit.enabled` | `SHARD_AUDIT_ENABLED` | `true` |
+| `audit.retention-days` | `SHARD_AUDIT_RETENTION_DAYS` | `30` |
+
+On by default, because a server that was not logging when the grief happened cannot be made to have been logging afterwards.
+
+## Cross-geo
+
+Only meaningful with more than one geo.
+
+| Variable | Meaning |
+| --- | --- |
+| `SHARD_WAN_ADDRESS` | This shard's `host:port` as seen from another geo. |
+| `SHARD_PUBLIC_HOST_<GEO>` | The public address of that geo's proxy. |
+| `SHARD_REDIS_URI_<GEO>` | That geo's Redis. Without it, cross-geo messages are dropped with a warning. |
+| `SHARD_GEO_HANDOFF_MIN_PING_MILLIS` | Ping above which handing a player to another geo's proxy might be worth a reconnect. Default 120. |

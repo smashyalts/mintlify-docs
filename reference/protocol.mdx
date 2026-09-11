@@ -1,0 +1,98 @@
+---
+title: "Protocol and storage"
+description: "Every message, channel, key and collection"
+icon: "code"
+---
+
+## The envelope
+
+Every message is one JSON object on a Redis pub/sub channel.
+
+```json
+{
+  "id":           "e2f0...",
+  "type":         "TRANSFER",
+  "from":         "main:world:0",
+  "to":           "main:world:1",
+  "replyTo":      null,
+  "sentAtMillis": 1750000000000,
+  "payload":      { }
+}
+```
+
+`from` is a shard id for shards and `proxy:<geo>:<name>` for proxies. A reply reuses the request's sender as its addressee and carries `replyTo`; replies are matched before channel handlers run, so a subscriber never sees somebody else's acknowledgement.
+
+<Note>
+Delivery is at-most-once, deliberately. Nothing that matters depends on a message arriving: the handoff is committed in MongoDB before the offer is sent, the block journal survives a lost delta, and the entity dedup key makes a redelivery harmless. A message is a hint to go look at durable state, never the state itself.
+</Note>
+
+## Message types
+
+| Type | Direction | Reply | Payload |
+| --- | --- | --- | --- |
+| `PREPARE` | shard to neighbour | none | uuid and position |
+| `TRANSFER` | shard to shard | `ACK` / `NACK` | snapshot, token, stale entity ids |
+| `PRE_CONNECT` | shard to every proxy | none | uuid, target, server |
+| `CONNECT` | shard to every proxy | none | uuid, token, target, geo, server |
+| `ENTITY_CROSS` | shard to shard | `ACK` / `NACK` | uid, token, serialized entity, position |
+| `GHOST_STATE` | shard to neighbour, each tick | none | entities, and membership when it changes |
+| `BLOCK_DELTA` | shard to neighbour | none | positions and block data |
+| `GOODBYE` | shard to the world | none | empty |
+| `GEO_HANDOFF` | proxy to another geo's proxies | none | uuid, token, source geo |
+| `REMOTE_TASK` | plugin to the owning shard | none | task name and arguments |
+| `PLUGIN` | plugin to plugin | optional | channel and data |
+
+`HEARTBEAT` is declared but never sent. Liveness is a timestamp in MongoDB, not a message.
+
+## Redis
+
+| Channel | Who subscribes |
+| --- | --- |
+| `shard:node:<geo>:<world>:<region>` | that one shard |
+| `shard:proxy:<geo>:<name>` | that one proxy |
+| `shard:world:<world>` | every shard of that world, every geo |
+| `shard:proxies:<geo>` | every proxy in that geo |
+| `shard:proxies` | every proxy everywhere |
+
+The destination geo is read out of the channel name, which is how a publish is routed to the right geo's Redis. Channels with no geo in the name are broadcast everywhere.
+
+| Key | TTL | Purpose |
+| --- | --- | --- |
+| `shard:seen:<shard>:<token>` | 2 min | Entity-crossing dedup, per attempt |
+| `shard:hit:<uuid>` | 10 s | A pending cross-border projectile hit |
+| `shard:proj:<uid>` | 90 s | Who fired a projectile that crossed |
+| `shard:map:players:<shard>` | 5 s | This shard's players, for a web map |
+| `shard:lock:<name>` | caller's | Plugin locks |
+| `shard:kv:<namespace>` | none | Plugin key/value space |
+
+Everything is under `shard:`, so a shared Redis can host other tenants — but not two Atlas networks, because the keys are not namespaced per network.
+
+## MongoDB
+
+| Collection | Key | Contents |
+| --- | --- | --- |
+| `players` | uuid | The lease, fence, sequence, snapshot and transfer marker |
+| `shards` | `geo:world:region` | Server name, addresses, player count, last seen |
+| `public_hosts` | geo | The address clients use for that geo |
+| `block_journal` | `world:x:y:z` | Latest block state in a ghost band, for chunk replay |
+| `audit_log` | ObjectId | The append-only change log |
+| `<plugin>_<name>` | plugin's choice | Whatever a plugin puts there |
+
+Writes are majority-acknowledged. Reads default to the nearest member, except the player record at login, which reads from the primary because a stale read would route somebody to the shard they just left.
+
+## Intervals
+
+| Thing | Value |
+| --- | --- |
+| Ghost frame | every tick |
+| Ghost staleness | 3.5 s |
+| Block delta flush | 2 ticks |
+| Border and entity scan | 2 ticks |
+| Prepare throttle | 3 s per player per neighbour |
+| Chunk pin lifetime | 30 s |
+| Autosave | 60 s per player, spread |
+| Lease renewal | a third of the TTL |
+| Topology staleness | three heartbeats |
+| Entity crossing retries | 3 |
+| Audit flush | 2 s |
+| Audit rollback pacing | 200 blocks per tick |

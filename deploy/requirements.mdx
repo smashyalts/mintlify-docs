@@ -1,0 +1,75 @@
+---
+title: "Requirements"
+description: "What you need before you start, and how many servers it really is"
+icon: "clipboard-check"
+---
+
+## The count
+
+A four-region network is not four servers.
+
+| What | How many | Why |
+| --- | --- | --- |
+| Paper shards | one per region | Each is the only writer for its square. |
+| Velocity proxy | one | Routes logins and performs every crossing. |
+| Hub | one | Where players wait while a shard restarts. |
+| MongoDB | one | Player records, topology, the block journal. |
+| Redis | one per geo | Ghost frames, block deltas, transfer offers. |
+
+Start with a 2 by 2 grid. Every extra region is another server to pay for, and the interesting behaviour is all there with four.
+
+<Note>
+The hub is not strictly required — without one a drain logs an error and leaves players where they are — but you cannot cleanly restart a shard without it.
+</Note>
+
+## Versions
+
+Atlas compiles against the Mojang-mapped server, so it runs on the Paper build family it was built for and not on others. The pinned versions live in `gradle.properties`.
+
+| Component | Version |
+| --- | --- |
+| Paper | 26.2, pinned to a specific build |
+| Velocity | 4.0.0 |
+| Java | 25 |
+| MongoDB | any, standalone is fine |
+| Redis | any recent |
+
+<Warning>
+Check the Java and Paper versions your host actually offers before committing. A mismatch is a startup crash, not a degradation, and on shared hosting you often cannot pick the exact build.
+</Warning>
+
+## MongoDB: a standalone is fine
+
+A plain `mongod` works. Ownership is a fenced lease, which is a single-document update, and single-document atomicity is something every deployment provides.
+
+What differs is the read concern, and Atlas asks the server what it is on startup and adapts. On a replica set it reads with `majority`, which guards against a failover rolling back an acknowledged write and resurrecting a lease another shard has taken. A standalone has no second node and therefore no failover, so it reads with `local`, which is the same guarantee rather than a lesser one.
+
+The one thing you lose is the multi-document transaction helper offered to other plugins. Nothing in the crossing path uses it, and plugins that need it fail loudly rather than half-applying.
+
+If you want it, a single-member replica set is one flag and one command on the same `mongod`:
+
+```bash
+mongod --replSet rs0 --bind_ip_all
+```
+
+```javascript
+rs.initiate()
+```
+
+then name it in the URI with `?replicaSet=rs0`. Any managed MongoDB is already a replica set.
+
+## Redis: one per network
+
+Keys are not namespaced by tenant. Two networks pointed at one Redis overwrite each other's routing and transfer tickets, and the symptom is players being sent to the wrong network's servers rather than an error. Use a separate instance, or at minimum a separate database number:
+
+```
+redis://host:6379/1
+```
+
+## The world
+
+This is the requirement with no error message, and the one that looks like a bug in Atlas when it bites.
+
+Chunk decoration is not a pure function of the seed. Four servers generating "the same" world from the same seed disagree about where the trees are, visibly, at every border, as a seam where terrain does not line up.
+
+So generate the world once, pre-generate it out to the edge of the grid, stop the server, and copy the folder to every shard. Every shard must also use the same `level-name`. Each then keeps its own copy and what players build on region 0 lives only on region 0's server, which is the point.

@@ -1,0 +1,68 @@
+---
+title: "Events"
+description: "The lifecycle hooks a sharded network adds"
+icon: "bell"
+---
+
+## ShardPlayerArriveEvent
+
+The shard-aware replacement for `PlayerJoinEvent`. Fired on the destination once the player's full state has been applied, vanilla and every data adapter.
+
+```java
+@EventHandler
+public void onArrive(ShardPlayerArriveEvent e) {
+    if (e.isTransfer()) return;        // came from another shard
+    if (e.isFirstJoin()) welcome(e.getPlayer());
+}
+```
+
+<Warning>
+By the time `PlayerJoinEvent` fires, the inventory is not loaded yet. Anything that reads or writes player state belongs here instead.
+</Warning>
+
+`getSource()` is null for a plain login and names the shard they came from otherwise.
+
+## ShardTransferPrepareEvent
+
+Fired on the source before any state is captured, for a border crossing and for an API transfer alike. Cancellable: cancelling keeps the player here and pushes them back inside the border.
+
+This is the last moment at which mutating the player means anything. After it, their state is snapshotted and any change is lost.
+
+## ShardTransferCommitEvent
+
+Fired on the source once ownership has moved. The player object is still valid for a few ticks but is frozen: writes are discarded and they will disconnect shortly.
+
+Use it to clean up things that belong to this server only — scoreboards, boss bars, caches. Do not use it to give them anything.
+
+## ShardEntityCrossEvent
+
+A non-player entity is about to be handed to a neighbour. Cancellable; cancelling keeps it here, clamped inside the border.
+
+Cancel it for entities your plugin tracks by Bukkit entity id or by reference, because on the other side it is a new entity with a new id. The mesh-wide uid on the event is stable across the crossing and is what you should key on instead.
+
+## ShardEntityArriveEvent
+
+The other end of the same crossing. Re-attach whatever you track, keyed by the uid.
+
+## ShardRemoteKillEvent
+
+A player on this shard killed somebody on a different one.
+
+The ordinary path cannot work across a border: a projectile resolves its shooter against the world it is in, so an arrow that crossed arrives with no attacker and everything downstream of the killer sees nothing. Atlas carries the shooter's identity with the projectile and turns the death back into this event, fired on the killer's shard because that is the only server that has them.
+
+```java
+@EventHandler
+public void onRemoteKill(ShardRemoteKillEvent e) {
+    economy.reward(e.killer(), 10);
+}
+```
+
+The vanilla kill statistic is already incremented before it fires. Not cancellable: by then the victim is dead on another server and there is nothing left to prevent.
+
+## ShardReadyEvent
+
+This server has joined the mesh, announced its region, and is about to accept players. Register scheduler tasks, queries and subscriptions before or during it.
+
+## What has no event
+
+There is no event for a block mirrored into the ghost band, and none for a ghost appearing. Both happen continuously and at a rate that would make a listener a performance problem rather than a feature. Check `isGhostZone` and `isGhost` where it matters instead.

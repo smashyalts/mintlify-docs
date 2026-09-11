@@ -1,0 +1,58 @@
+---
+title: "The test network"
+description: "A container network that runs each server the way a panel host does"
+icon: "flask"
+---
+
+Pterodactyl runs each server as a plain JRE process in its own container with the server files on a mounted volume. The harness in `docker-test/` does the same, so what it proves is what a rented network would do rather than what Kubernetes did.
+
+It brings up a standalone MongoDB, a Redis, two shards, a hub and a Velocity proxy on one Docker network, and **none of the shards are declared in `velocity.toml`** — they register themselves, which is the piece that replaced the Kubernetes operator.
+
+## Running it
+
+Needs Docker and about 6 GB of memory.
+
+```bash
+./gradlew build
+./docker-test/setup.sh
+docker compose -f /opt/atlas-test/docker-compose.yml up -d
+```
+
+The proxy is on `localhost:25577`. `setup.sh` downloads the pinned Paper and Velocity builds, generates one world and copies it to each shard, writes the configuration, and assembles a compose file. It is idempotent.
+
+## What it checks
+
+<CardGroup cols={2}>
+  <Card title="The plugins enable" icon="circle-check">
+    On the real Paper, Velocity and Java versions, which is the single most likely thing to differ on a host you do not control.
+  </Card>
+  <Card title="A standalone database works" icon="database">
+    The read concern adapts and the log says which it chose.
+  </Card>
+  <Card title="Self-registration" icon="network-wired">
+    Both shards appear on the proxy from their address alone.
+  </Card>
+  <Card title="Restart and recovery" icon="arrows-rotate">
+    Stopping a shard withdraws it and the proxy unregisters it; starting it brings the topology back.
+  </Card>
+</CardGroup>
+
+RCON is enabled on the shards, so the operator commands can be driven from a script rather than by hand.
+
+```bash
+python3 /opt/atlas-test/rcon.py r0 25575 atlastest "shard topology"
+```
+
+## What it cannot check yet
+
+It cannot walk a player across a border. No headless client speaks this protocol version — node-minecraft-protocol stops one release short — so the crossing, the ghost band, the block mirror and the audit log still need a person with a real client.
+
+<Warning>
+The proxy in the harness runs `online-mode = false` so a test client can connect without a Mojang account. That is the one setting deliberately unlike production; see [Security](/deploy/security).
+</Warning>
+
+## Why this exists
+
+Because a full line-by-line review, a green build and a passing unit suite all missed a null dereference that stopped the plugin enabling at all. Field initializers run before the constructor body, so a setting read from one dereferenced a field that was still null. Every shard failed to enable, Paper disabled the plugin, and the server carried on accepting players while owning nothing.
+
+Nothing in the build could see it, because nothing in the build constructs a plugin. Thirty seconds of a real server starting caught it immediately.
