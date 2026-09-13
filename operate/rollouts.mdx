@@ -1,0 +1,65 @@
+---
+title: "Restarts and rollouts"
+description: "Replacing a shard without losing anybody"
+icon: "arrows-rotate"
+---
+
+A shard with a player standing on it cannot simply be stopped. Their state is in memory, their lease is held, and killing the process leaves the lease held until it expires — during which a reconnect is refused with *"still in use on another server"*.
+
+So drain first.
+
+```bash
+/shard drain Updating this region, back shortly.
+```
+
+## What a drain does
+
+<Steps>
+  <Step title="Capture and release, in that order">
+    Each player's state is written to MongoDB and their lease released, so the record is complete and unowned the instant the proxy acts. Doing it the other way round leaves a window where a live lease points at a server that is shutting down, and the arrival is refused.
+  </Step>
+  <Step title="Ask the proxies to park them">
+    Every proxy is told, not just this geo's, because a player bridged in from another geo is held by a proxy over there.
+  </Step>
+  <Step title="They wait in the hub">
+    The hub is a plain server outside the grid. It holds nothing anybody cares about; its whole job is to be somewhere a player can be while no shard can hold them.
+  </Step>
+  <Step title="They come back on their own">
+    As soon as their region resolves to a server that is not the one they were drained from, they are returned to their own coordinates. Not to anything the hub knows — the same question as logging in, answered by the same code.
+  </Step>
+</Steps>
+
+<Note>
+After ninety seconds they are sent back even to the same server. A drain that was not followed by a replacement is a shard that is staying, and leaving somebody in a waiting room for a train that already left is worse than sending them home.
+</Note>
+
+## Why not hand them to a neighbour
+
+The machinery exists and is seamless, and it is still wrong. A handoff puts a player at their own coordinates on the far side of a border, and those coordinates belong to whatever is there: somebody's base, a drop into a ravine, the inside of a wall.
+
+Moving a player somewhere they did not walk is a different act from carrying them across a line they did walk across, and it should look like one.
+
+## The order for a restart
+
+<Steps>
+  <Step title="Drain">
+    `/shard drain`. It reports how many it moved, and says `nobody here to drain` when the shard is empty and safe to replace.
+  </Step>
+  <Step title="Stop">
+    A clean stop withdraws the shard from the topology immediately, so the proxy stops routing to it at once rather than after the staleness window. It also waits for the last saves and audit writes to reach MongoDB before closing the connection.
+  </Step>
+  <Step title="Replace and start">
+    On start it announces itself, and the proxy registers it again within about five seconds. Watch for `registered shard` on the proxy.
+  </Step>
+  <Step title="Check">
+    `/shard topology` should be back to every region alive.
+  </Step>
+</Steps>
+
+## What an unclean stop costs
+
+Killing the process skips the withdraw and the final saves. The region keeps a topology row until it goes stale, which is three heartbeats, and players keep their leases until those expire. Everything recovers on its own; it just takes the TTL rather than being instant, and anything since the last autosave is lost.
+
+<Warning>
+Two servers must never run for one region. The fence keeps *player state* safe, but both would write blocks and both would mirror, and the world itself would diverge with nothing to reconcile it. Whatever starts your shards must guarantee one process per region.
+</Warning>

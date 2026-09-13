@@ -1,0 +1,98 @@
+---
+title: "Overview"
+description: "Writing a plugin that works on a sharded network"
+icon: "plug"
+---
+
+A plugin written for one server makes three assumptions that stop being true here: that every online player is on this server, that a location can be read and written, and that a teleport is a teleport. `ShardService` is what replaces each of them.
+
+```java
+ShardService shard = ShardAPI.get();
+```
+
+Depend on `atlas` in your `paper-plugin.yml` so it loads first. Everything on the interface is safe from the main thread unless documented otherwise, and futures complete on the main thread.
+
+## The checklist
+
+<CardGroup cols={2}>
+  <Card title="Never Player#teleport across a region" icon="person-walking-arrow-right">
+    Use `transfer`. A raw teleport is intercepted and rerouted, but the event is cancelled, so your code is told it failed.
+  </Card>
+  <Card title="Never assume a player is here" icon="user-group">
+    Use `locate` and `summon` for anyone who might be on another shard.
+  </Card>
+  <Card title="Never write a block you do not own" icon="cube">
+    Check `isOwned`, or use `askAt` and the scheduler to have the owner do it.
+  </Card>
+  <Card title="Always skip ghosts" icon="ghost">
+    `isGhost` before anything with a side effect. A ghost is a puppet of an entity living elsewhere.
+  </Card>
+</CardGroup>
+
+## Where a player is
+
+```java
+shard.locate(uuid).thenAccept(found -> {
+    if (found.isEmpty() || !found.get().online()) return;
+    NetworkPlayer p = found.get();
+    // p.shard(), p.world(), p.x() ...
+});
+```
+
+`locate` asks the shard that owns them, so the answer is live rather than as old as their last save. The stored record is up to a minute stale, which is the wrong answer for anyone walking. `onlinePlayers()` lists everyone in the mesh.
+
+<Note>
+A `NetworkPlayer` carries coordinates and a world name rather than a `Location`, because a location needs a world object and a shard only has its own.
+</Note>
+
+## Moving a player
+
+```java
+shard.transfer(player, destination, "myplugin:arrived", args);
+```
+
+The future completes when the handoff commits, which is **before** the player arrives. They are still standing here and about to disconnect; a few hundred milliseconds later they exist on another server with a different player object, and everything about them is overwritten from the snapshot.
+
+So this does not work:
+
+```java
+// The message goes to the server they are leaving, and the fire ticks are discarded.
+shard.transfer(p, home).thenRun(() -> {
+    p.sendMessage("Welcome home");
+    p.setFireTicks(0);
+});
+```
+
+Anything that must happen where they land is a **named action**, registered on every shard at enable, because a lambda cannot travel.
+
+```java
+shard.registerArrival("myplugin:arrived", (player, args) -> {
+    player.sendMessage(args.get("why").getAsString());
+});
+```
+
+For a player who is not on this server, `summon` finds whoever holds them and has that shard do it.
+
+## Working on ground you do not own
+
+`askAt` runs a registered query on whichever shard owns a location and gives you the answer. `ShardScheduler.runAt` is the same thing without a reply, for "make this happen over there".
+
+```java
+shard.registerQuery("myplugin:is-safe", args -> { ... });
+shard.askAt(location, "myplugin:is-safe", args).thenAccept(reply -> { ... });
+```
+
+`safeLanding` is the one everybody needs: somewhere near a point that a player can stand without being hurt by it, resolved by the shard that owns the ground. It is allowed to fail, and a caller that teleports anyway is the bug it exists to prevent.
+
+## The sub-services
+
+| Service | For |
+| --- | --- |
+| `messenger()` | Plugin-to-plugin messages between shards, fire and forget or request and reply |
+| `store()` | The shared database: your own collections, the raw handle, and a geo-local key/value space |
+| `locks()` | Geo-local distributed locks, for "only one shard at a time does this" |
+| `scheduler()` | Run a named task on the owner of a location, and hop on and off the main thread |
+
+<Warning>
+Everything registered must be unregistered on disable: arrival actions, queries, data adapters and subscriptions. A handler left behind holds your classloader and goes on answering for a plugin that no longer exists.
+</Warning>

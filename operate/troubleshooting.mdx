@@ -1,0 +1,72 @@
+---
+title: "Troubleshooting"
+description: "The failures with no obvious error, and what each one actually means"
+icon: "circle-question"
+---
+
+## Players cannot be routed anywhere
+
+<AccordionGroup>
+  <Accordion title="The proxy says a region is restarting and nothing is">
+    No live owner for that region. Check `/shard topology` on any shard: a dash means the row is missing or stale. Either the shard is down, or it is up and cannot reach MongoDB to announce itself.
+  </Accordion>
+  <Accordion title="The shards are up but the proxy never registers them">
+    Each shard needs `shard.address`, the host and port **the proxy** dials. Without it the shard announces no address and the proxy leaves it to `velocity.toml`. Look for `registered shard` on the proxy at startup.
+
+    If you are declaring servers by hand instead, the name in `velocity.toml` must match the name the shard announces exactly.
+  </Accordion>
+  <Accordion title="Players land on the wrong shard for where they are standing">
+    The grid disagrees somewhere. Compare `region-size`, `regions-x` and `regions-z` on every shard and the proxy. `/shard info` prints the grid it is using.
+  </Accordion>
+</AccordionGroup>
+
+## Crossings
+
+<AccordionGroup>
+  <Accordion title="The border behaves like a wall">
+    Transfers are timing out. Usually Redis: the offer never reaches the neighbour, so the handoff is reverted and the player is nudged back. `/shard info` reports Redis as up or DOWN.
+  </Accordion>
+  <Accordion title="Crossing works but shows a loading screen">
+    The client did not keep its world. Either the entity id could not be reused, which is logged at arrival, or the player is crossing between geos, where the fallback is a genuine reconnect.
+
+    An id outside the reserved range — usually from a respawn on an old record — is migrated on the player's next plain login, where there is no world to keep.
+  </Accordion>
+  <Accordion title="Players are yanked backwards after a crossing">
+    Turn on `tuning.arrival-trace` with a value like 16 and cross again. It logs each movement report with its step size; anything larger than a client can walk is the server or the proxy overruling it, and the timestamp says which part of the arrival did it.
+
+    Turn it off afterwards. It is sixteen log lines per crossing per player.
+  </Accordion>
+  <Accordion title="Your session was taken over by another server">
+    The lease renewal failed, so this shard stopped being the owner and refused to keep writing. Reconnecting is correct and lands the player on whoever owns them now. If it happens in bursts, MongoDB is unreachable or slow enough that renewals are missing their window.
+  </Accordion>
+</AccordionGroup>
+
+## Borders look wrong
+
+<AccordionGroup>
+  <Accordion title="Terrain does not line up at a border">
+    The shards do not have the same world. Chunk decoration is not a pure function of the seed, so generating separately from the same seed is not enough. Generate once and copy.
+  </Accordion>
+  <Accordion title="Blocks broken near a border do not appear on the other side">
+    Check `/shard mirror`. It counts what was sent, what was applied, and where deltas were dropped: out of band, in unloaded chunks, or unparseable. A rising `dropped bad data` means the two sides are on different server versions.
+  </Accordion>
+  <Accordion title="The far side of a border is empty or frozen">
+    A shard with no players on it is deliberately not mirrored to. If somebody is there and it is still empty, check `/shard ghosts` on the shard that should be receiving, and look for the cap warning on the sender.
+  </Accordion>
+  <Accordion title="Entities that cannot be hit">
+    A leftover puppet. They are swept as chunks load and when the crossing that created them ends. One that survives means the bookkeeping was lost, usually a plugin reload mid-crossing.
+  </Accordion>
+</AccordionGroup>
+
+## The world is emptying
+
+If entities are disappearing, look for a warning about removing entities at positions outside the configured grid. Nobody owns those coordinates, so anything that wanders there is removed — and if the grid numbers are wrong, most of the world is outside it.
+
+## Things that are working as intended
+
+| Symptom | Why |
+| --- | --- |
+| Cannot open a chest across a border | Interactions are refused. Breaking, placing and hitting work. |
+| A mob is standing still across a border | Ghosts have no AI. The real one is moving on its own shard. |
+| A player across the border has no tab list entry | Player ghosts are mannequins, not players. |
+| Terrain past the ghost band does not match | Chunks there still generate under view distance. They are scenery and are never mirrored. |

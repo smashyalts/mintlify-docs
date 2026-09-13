@@ -1,0 +1,58 @@
+---
+title: "Across continents"
+description: "Running one world out of more than one datacentre"
+icon: "globe"
+---
+
+A *geo* is one cluster in one place with its own Redis. Regions of the same world can be homed in different geos, and a player can walk from one to the other.
+
+<Note>
+This is not the shape a rented network usually wants. If you are running a handful of servers on a panel host, everything is one geo and none of this applies. It is here because the design has to answer the question.
+</Note>
+
+## What is local and what is global
+
+Redis is per geo and carries the hot path: ghost frames, block deltas, transfer offers between neighbours. Every node subscribes only to its own geo's Redis. A message for a node elsewhere is published onto that geo's Redis instead.
+
+MongoDB is the one global thing: player records, the topology of who serves which region, and the block journal. That is what lets a proxy in one geo route a player to a shard in another.
+
+## Two ways over the border
+
+The cheap way is a **bridge**. Shards publish an address reachable from outside their own cluster, every proxy registers the far ones as ordinary servers, and a cross-geo crossing becomes a plain server switch. The client keeps its world and the border is invisible, but the player is now proxied through a machine on the wrong continent.
+
+The other way is a **handover**: the client is sent a transfer packet, disconnects, and reconnects to the other geo's proxy. Seconds of reconnect, but afterwards they are talking to the proxy nearest them.
+
+## Why a handover usually buys nothing
+
+The ocean is in the path either way. It only moves:
+
+```
+bridged:      client --0ms--> near proxy --158ms--> far shard   = 158ms
+handed over:  client --158ms--> far proxy --0ms--> far shard    = 158ms
+```
+
+A handover is only worth a reconnect when the **player** is nearer the other geo, not when the region is. Somebody sitting next to this proxy who walks into a region homed on another continent pays the same latency whichever proxy they are on.
+
+So the decision is made from the player's measured ping to us, not from where the shard lives. A client on the same network reports single digits and is never handed over however long it stays. That was the original bug in this logic: it decided from where the shard was, which is the one thing that does not matter.
+
+## When the handover happens
+
+Bridge first, hand over later, and only once the player has settled. In order of preference:
+
+<Steps>
+  <Step title="They cross back">
+    Nothing happens at all. No reconnect was ever paid for, and a border you pace over is free in both directions. This is the case the whole design exists for.
+  </Step>
+  <Step title="They cross again, deeper in, having settled">
+    The reconnect replaces a server switch that was going to happen anyway, at a border, where a moment of hesitation is expected and already masked.
+  </Step>
+  <Step title="Neither, for long enough">
+    It happens anyway. A whole session played across an ocean is worse than one loading screen.
+  </Step>
+</Steps>
+
+## The hint, and why there are two of them
+
+When a client is handed over, the target geo's proxies are told directly and the same note is pinned on the client as a cookie. Either can be lost, so both are sent; the MongoDB record is always the authority and the hint only saves a database read at login.
+
+A cookie older than a minute is ignored, so a stale one cannot misroute anybody. On a single-geo network the cookie is never requested at all, because paying a client round trip on every login for a fallback that can never fire is pure cost.

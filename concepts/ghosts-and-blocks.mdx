@@ -1,0 +1,60 @@
+---
+title: "Ghosts and blocks"
+description: "Seeing and touching the other side of a border"
+icon: "ghost"
+---
+
+A border you cannot see through is a wall. The ghost band is the strip either side of every border where each shard shows the other's players, mobs and block changes.
+
+## Ghosts
+
+Every tick, a shard describes everything standing within `ghost-width` blocks of a neighbour and publishes it to that neighbour. The neighbour keeps one local stand-in per entity: a mannequin carrying the real skin for players, an inert copy for everything else.
+
+Ghosts are deliberately not real. They have no AI, cannot be hurt, targeted, picked up, merged or interacted with, and never persist. One not refreshed for a few seconds is removed.
+
+<Tip>
+Ghosts are moved rather than teleported. A teleport is a discontinuity the client starts fresh from, and twenty of those a second is why an early version stepped instead of walking. Changing the position directly lets the entity tracker emit a relative move, which the client interpolates.
+</Tip>
+
+### What keeps it cheap
+
+A border can have a lot standing on it, and a naive implementation is an amplifier: every entity serialised once per neighbour per tick. Four things bound it.
+
+<CardGroup cols={2}>
+  <Card title="Silence is free" icon="volume-xmark">
+    An entity that has not moved is not described. A parked minecart costs nothing until something happens to it.
+  </Card>
+  <Card title="Nobody looking, nothing sent" icon="eye-slash">
+    A shard with no players on it is not mirrored to at all. Presence is announced directly rather than read from a heartbeat, so an arrival is noticed at once.
+  </Card>
+  <Card title="A cap per frame" icon="gauge-high">
+    Players are never cut. Behind them, the nearest hold still and the rest rotate, so nothing is starved long enough to be reaped.
+  </Card>
+  <Card title="Equipment is cached" icon="shirt">
+    Armour changes about once a minute and was being re-serialised twenty times a second. It is now compared before it is encoded.
+  </Card>
+</CardGroup>
+
+## Block mirroring
+
+Any block change within the band is noted, its final state read two ticks later so a chain of changes costs one message, and then sent two ways.
+
+The first is a delta to each neighbour whose rectangle is inside the band, applied with physics off and only in loaded chunks. The second is an upsert into a journal collection keyed by position. The journal is the catch-up path: when a chunk in the band loads on the neighbour, it replays the journal for that chunk. Without it, a neighbour that had been restarted would show freshly generated terrain where the owner has a hole.
+
+Changes that fire no Bukkit event, such as `/fill`, `/setblock` or a plugin writing blocks directly, are caught by reading the block updates the server sends to clients. That covers every source of change with one hook instead of an ever-growing list of events.
+
+## The region guard
+
+The other half of the mirror is a guard that refuses every write the shard is not authoritative for: placement, breaking, buckets, fluid flow, fire, growth, decay, both explosion events, pistons, and the multi-block changes that carry a list of states rather than a block, such as bonemeal, saplings and sponges. The band is written only by the mirror.
+
+It also turns a plugin's cross-region teleport into a proper transfer, which is what lets an ordinary warp or home plugin work here without knowing any of this exists.
+
+## Reaching across
+
+Breaking, placing and hitting across a border do work. The shard the player is standing on cannot make the change and the shard that owns the block cannot see the player, so the edit is forwarded and each side does the half it is authoritative for. The owner reads the block, decides what it drops and applies the change; the player's own shard spends the item, damages the tool and hands over the drops.
+
+It fails closed. Nothing is consumed if the owner did not confirm.
+
+<Warning>
+Interactions are refused on purpose. A container or a screen is a live session against a block on a server this one cannot hold a reference to, and half-implementing that is how you get duplicated items. Players get an action bar line saying so rather than silence.
+</Warning>

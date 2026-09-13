@@ -1,0 +1,96 @@
+---
+title: "Worked example"
+description: "The three teleport features every server has, written for a sharded one"
+icon: "code"
+---
+
+The full sources are in `shard-example/`. Each of these exists because the obvious single-server version is wrong here in a specific way.
+
+## Homes
+
+Homes live in the player record through an adapter, so they follow the player. Going home uses `transfer`, because the home may be in a region this server does not own.
+
+```java
+private void goHome(Player p, String name) {
+    JsonObject home = homes.get(p.getUniqueId()).getAsJsonObject(name);
+    shard.transfer(p, home.get("world").getAsString(),
+            home.get("x").getAsDouble(),
+            home.get("y").getAsDouble(),
+            home.get("z").getAsDouble())
+        .thenAccept(r -> {
+            if (!r.ok()) p.sendMessage("Could not go home: " + r.status());
+        });
+}
+```
+
+`transfer` handles all three cases: the same region, another shard in this geo, and a shard on another continent. Never `Player#teleport`.
+
+## Random teleport
+
+This is the one that proves `askAt` and `safeLanding` earn their place. A random point is almost always on somebody else's shard, and this server cannot look at the ground there.
+
+```java
+private void rtp(Player p, int triesLeft) {
+    if (triesLeft <= 0) {
+        p.sendMessage("Could not find anywhere to put you.");
+        return;
+    }
+    Location guess = randomPoint(p.getWorld());
+    if (shard.regionOf(guess) < 0) {
+        rtp(p, triesLeft - 1);
+        return;
+    }
+    shard.safeLanding(guess).whenComplete((safe, err) -> {
+        if (err != null || safe == null) {
+            rtp(p, triesLeft - 1);
+            return;
+        }
+        JsonObject args = new JsonObject();
+        args.addProperty("why", "Dropped you at " + safe.getBlockX() + ", " + safe.getBlockZ());
+        shard.transfer(p, safe, ARRIVED, args);
+    });
+}
+```
+
+The recursion is the feature. Most random points in a real world are inside a mountain, under an ocean or in a cave, so a single throw is not a random teleport — it is a coin flip about whether the player suffocates. `safeLanding` answers honestly, which means it can say no, which means the caller has to be willing to throw again.
+
+## Teleport requests
+
+`/tpa` needs `locate`, because the stored record says where somebody was when they were last saved, which for anybody walking is the wrong answer.
+
+```java
+shard.locate(targetName).thenAccept(found -> {
+    if (found.isEmpty() || !found.get().online()) {
+        from.sendMessage(targetName + " is not online.");
+        return;
+    }
+    NetworkPlayer target = found.get();
+    JsonObject ask = new JsonObject();
+    ask.addProperty("to", target.uuid().toString());
+    ask.addProperty("asker", from.getUniqueId().toString());
+    shard.messenger().send(target.shard(), "teleports:ask", ask);
+});
+```
+
+The request travels with the message, because `/tpaccept` is typed by the target on whatever server is holding them, and a map on the asker's shard is not visible from there. **Anything two players share has to live where the second one will look for it.**
+
+Accepting uses `summon`, because the asker is somewhere else entirely and there is no player object for them here.
+
+```java
+shard.summon(askerId, target.getLocation(), ARRIVED, arrived)
+    .thenAccept(result -> {
+        if (!result.ok()) target.sendMessage("Could not bring them: " + result.status());
+    });
+```
+
+## The arrival action
+
+All three use the same named action, registered on every shard at enable, because it runs on whichever server the player landed on.
+
+```java
+shard.registerArrival(ARRIVED, (player, args) -> {
+    player.sendMessage(args.get("why").getAsString());
+});
+```
+
+The obvious version — teleport, then tell them what happened — sends the message to the server they are leaving.

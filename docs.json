@@ -1,0 +1,105 @@
+{
+  "theme": "mint",
+  "name": "Atlas",
+  "colors": {
+    "primary": "#1E6F5C",
+    "light": "#5FBF9F",
+    "dark": "#14503F"
+  },
+  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Support",
+        "href": "mailto:hi@mintlify.com"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Dashboard",
+      "href": "https://dashboard.mintlify.com"
+    }
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/mintlify",
+      "github": "https://github.com/mintlify",
+      "linkedin": "https://linkedin.com/company/mintlify"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "icon": "diagram-project",
+            "pages": [
+              "concepts/grid-and-ownership",
+              "concepts/crossing",
+              "concepts/ghosts-and-blocks",
+              "concepts/cross-geo"
+            ]
+          },
+          {
+            "group": "Deploying",
+            "icon": "server",
+            "pages": [
+              "deploy/requirements",
+              "deploy/shared-hosting",
+              "deploy/configuration",
+              "deploy/security"
+            ]
+          },
+          {
+            "group": "Operating",
+            "icon": "gauge",
+            "pages": [
+              "operate/commands",
+              "operate/audit",
+              "operate/rollouts",
+              "operate/troubleshooting",
+              "operate/testing"
+            ]
+          },
+          {
+            "group": "Reference",
+            "icon": "book",
+            "pages": [
+              "reference/protocol",
+              "reference/limitations"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Plugin API",
+            "icon": "plug",
+            "pages": [
+              "api/overview",
+              "api/player-data",
+              "api/events",
+              "api/example"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "description": "Spatial world sharding for Paper. One Minecraft world across several servers, with borders players can walk across."
+}

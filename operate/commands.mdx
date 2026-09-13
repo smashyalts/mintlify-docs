@@ -1,0 +1,62 @@
+---
+title: "Commands"
+description: "Everything an operator can ask a running network"
+icon: "terminal"
+---
+
+## /shard
+
+Requires `atlas.shard.admin`.
+
+| Command | Does |
+| --- | --- |
+| `/shard` or `/shard info` | This shard's id, server name, region bounds, grid, tuning, Redis connectivity and known remote geos. For a player, their region and distance to the nearest edge. |
+| `/shard topology` | A map of the grid showing which server serves each region, and which are unserved. |
+| `/shard ghosts` | How many ghosts are mirrored here right now. |
+| `/shard mirror` | Block mirror counters: sent, applied, and where deltas were dropped. |
+| `/shard save` | Force an immediate fenced save of every online player. |
+| `/shard drain [reason]` | Move everyone to the hub so this shard can be replaced. Runs from the console. |
+| `/shard time <value>` | Set the time on every shard of this world at once. Accepts ticks or `day`, `noon`, `night`, `midnight`. |
+| `/shard tp <x> <z>` | Transfer yourself to whichever shard owns those coordinates. |
+| `/shard bar` | Toggle a boss bar showing the shard, your ping, and the distance to the next border. |
+| `/shard walls` | Toggle particle curtains on the region boundary. |
+
+<Tip>
+`/shard bar` and `/shard walls` follow you across borders and geos, because the preference travels in the player record next to the inventory rather than living on one server.
+
+On the walls, blue is a border inside this geo, amber is another geo, and red is a region nobody is serving.
+</Tip>
+
+### Reading /shard topology
+
+```
+world world: 3/4 regions alive
+  0:main/world-r0    1:main/world-r1
+  2:main/world-r2    3:-
+```
+
+A dash means no live owner. Players there are sent to the hub and the ground is frozen until something serves it again.
+
+### /shard time
+
+Setting the time on one shard alone does not work: a follower is corrected back within the second. This sends an explicit set that every shard applies immediately.
+
+One shard is the clock — the lowest-numbered region that is alive — and it broadcasts the time and weather every second. The others follow. The leader is derived rather than elected, so there is no election to get stuck, and if it dies the next-lowest takes over within a heartbeat.
+
+## /audit
+
+Covered in full under [the change log](/operate/audit).
+
+| Command | Permission |
+| --- | --- |
+| `/audit inspect` | `atlas.audit.use` |
+| `/audit lookup <radius> <time> [actor]` | `atlas.audit.use` |
+| `/audit status` | `atlas.audit.use` |
+| `/audit rollback <radius> <time> [actor]` | `atlas.audit.rollback` |
+| `/audit restore <radius> <time> [actor]` | `atlas.audit.rollback` |
+
+## /back
+
+Registered on the proxy, not on a shard, and available to any player.
+
+A player stuck in the hub has no plugin of ours to talk to and no way to ask for anything. `/back` is the way out that does not depend on the automatic return being right. It sends them to wherever their record says they belong, or explains why it cannot yet.

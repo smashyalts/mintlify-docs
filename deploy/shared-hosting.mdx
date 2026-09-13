@@ -1,0 +1,81 @@
+---
+title: "Panel and VPS hosting"
+description: "Running Atlas on rented servers, with no orchestrator"
+icon: "server"
+---
+
+Atlas was built on Kubernetes and does not need it. The plugins carry no Kubernetes, Agones or Shulker code; those names appear in comments explaining why something behaves as it does, never in an import.
+
+What the cluster supplied was configuration, a name per server, and a copy of the world. This page is how to supply those three things by hand.
+
+## Let the proxy find the shards
+
+Give each shard the host and port **the proxy** dials and it registers itself.
+
+```yaml
+shard:
+  address: "127.0.0.1:25566"    # same machine
+```
+
+```yaml
+shard:
+  address: "10.0.0.11:25565"    # separate machines: this box's LAN address
+```
+
+That is the whole setup. The proxy reads the shards out of MongoDB every five seconds and keeps its own server list matching, so **you do not list shards in `velocity.toml` at all**. A shard that goes away is unregistered; one that moves is re-registered at its new address.
+
+This is the piece Kubernetes was doing. An operator there watched the cluster and registered each server as it appeared. Nothing does that on a rented box, so Atlas does it itself.
+
+<Tip>
+A server already named in `velocity.toml` is never touched, so anything you declare by hand wins and auto-registration only fills in the rest. The two mix freely.
+</Tip>
+
+### Declaring them yourself
+
+Leave `address` unset and nothing above happens. The names then become a contract: the proxy asks MongoDB which server owns a region, gets back a name, and looks it up among the servers in `velocity.toml`. If they do not match, players cannot be routed.
+
+Left unset, a shard names itself after its grid position, so `world-r0`, `world-r1` and so on.
+
+```toml velocity.toml
+[servers]
+world-r0 = "10.0.0.11:25565"
+world-r1 = "10.0.0.12:25565"
+hub      = "10.0.0.10:25565"
+```
+
+<Warning>
+On a panel host, do not rely on the machine hostname for server names. Several servers share one machine, so every shard would announce the same name, the last to start would own every region's record, and players anywhere would be routed to it.
+</Warning>
+
+## The hub
+
+The hub is the room players are parked in while a shard restarts, and the proxy finds it by name. Calling it `hub` works. If you call it something else, set `proxy.hub` to match.
+
+## Configuration files
+
+Both plugins write a starter `config.yml` on first start, in the same shape, at `plugins/atlas/config.yml`. Every setting is also an environment variable, and the file wins over the environment.
+
+That precedence matters more than it looks: on a rented server the panel often injects its own variables, and an operator who edits the file and sees nothing change has no way to find out why.
+
+<Note>
+A misspelled setting is named in the startup log rather than ignored: `config.yml has 1 setting(s) this version does not know: [shard.wrold]`. That is the one class of configuration bug with no other symptom.
+</Note>
+
+## What you give up without an orchestrator
+
+An honest list. None of these stop the system working.
+
+<AccordionGroup>
+  <Accordion title="No automatic replacement">
+    On Kubernetes a dead shard is rescheduled and its region is served again within seconds. Here, a dead shard means its region has no owner until you restart it. Players in that region go to the hub and the rest of the world is unaffected — the failure is contained to one square, which is the design working — but the recovery is yours.
+  </Accordion>
+  <Accordion title="No rolling updates">
+    Updating the plugin means stopping shards. Players on a stopping shard are drained to the hub first.
+  </Accordion>
+  <Accordion title="Configuration is per server">
+    Four servers means four files. The grid settings in particular have to agree, which is why leaving them at the defaults is worth doing.
+  </Accordion>
+  <Accordion title="No cross-geo">
+    Splitting one world across two hosting providers needs WAN addresses, a public host per geo and a Redis in each place reachable from the other. It works, but it is not the shape this page is about.
+  </Accordion>
+</AccordionGroup>
