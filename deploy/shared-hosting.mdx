@@ -19,7 +19,12 @@ shard:
 
 ```yaml
 shard:
-  address: "10.0.0.11:25565"    # separate machines: this box's LAN address
+  address: "10.0.0.11:25565"    # separate machines on one LAN
+```
+
+```yaml
+shard:
+  address: "gs3.myhost.net:25566"   # another provider entirely: this shard's public address
 ```
 
 That is the whole setup. The proxy reads the shards out of MongoDB every five seconds and keeps its own server list matching, so **you do not list shards in `velocity.toml` at all**. A shard that goes away is unregistered; one that moves is re-registered at its new address.
@@ -45,6 +50,48 @@ hub      = "10.0.0.10:25565"
 
 <Warning>
 On a panel host, do not rely on the machine hostname for server names. Several servers share one machine, so every shard would announce the same name, the last to start would own every region's record, and players anywhere would be routed to it.
+</Warning>
+
+## Shards on different providers
+
+Nothing in Atlas cares where a shard runs. `address` is only where the proxy dials, so a public host and port works exactly like a LAN one, and a network split across two or three hosts is an ordinary deployment rather than an advanced one.
+
+The reason it is this easy is worth knowing, because it is what bounds the firewall work: **shards never open a connection to each other.** Every message between them — handoffs, ghost frames, block deltas, entity crossings — is published to Redis and read back by the other side. The only thing that ever dials a shard is the proxy.
+
+<Frame caption="Four boxes on three providers, one geo. The only inbound port the public needs is the proxy's.">
+  <img className="block dark:hidden" src="/diagrams/providers-light.svg" alt="Players reach a Velocity proxy, which dials shards on three separate providers; every shard and the proxy reach one MongoDB and Redis, and no shard connects to another shard" />
+  <img className="hidden dark:block" src="/diagrams/providers-dark.svg" alt="Players reach a Velocity proxy, which dials shards on three separate providers; every shard and the proxy reach one MongoDB and Redis, and no shard connects to another shard" />
+</Frame>
+
+| Connection | Direction | Needed |
+| --- | --- | --- |
+| Player to proxy | inbound to the proxy | The only port the public needs |
+| Proxy to each shard | outbound from the proxy | Whatever you put in `shard.address` |
+| Each shard to MongoDB and Redis | outbound from the shard | Authenticated, over TLS |
+| Proxy to MongoDB and Redis | outbound from the proxy | Same |
+| Shard to shard | **never happens** | Nothing to open |
+
+So the checklist for spreading a network over the internet is three items: give every shard an `address` the proxy can actually reach, put MongoDB and Redis somewhere every box can reach, and read [Security](/deploy/security) before you do either — a database on a public address with no password is the whole network, and a shard on a public address is only protected by the forwarding secret.
+
+<Note>
+  This is not cross-geo. Cross-geo means a **second proxy**, near players on another continent, with its own Redis and public host. It is about where your players are, not where your servers are. One geo spread over five providers is still one geo. See [Across continents](/concepts/cross-geo) if you actually want the second proxy.
+</Note>
+
+### What latency changes
+
+Everything works over WAN. Four things get slower, and only the first is worth acting on.
+
+| What | On a LAN | Over WAN | Do about it |
+| --- | --- | --- | --- |
+| A border crossing | 300-450 ms | 2.3-2.9 s across an ocean | Turn on `tuning.pre-open` |
+| Breaking a block across a border | well inside budget | fine below about 1.5 s round trip | Nothing |
+| Mobs appearing after you cross | a few hundred ms | depends on the link | `tuning.chunk-send-rate` on a metered one |
+| Handoff acknowledgement | instant | 8 s budget, 30 s lease | Nothing |
+
+The crossing number is the one that matters, and it is not the position handoff — it is a full backend login, which ships this server's entire registry set, roughly a megabyte, every time. `tuning.pre-open` makes the neighbour hold that connection open in the configuration phase before the player reaches the line, so the expensive part is already paid when they step over.
+
+<Warning>
+  `tuning.pre-open` is off by default and that default is deliberate: the first deployment of it made **every** crossing fail, because an armed player's login skipped the lease and only a parked connection ever took it. It also only arms when exactly one neighbour is in reach, so a player walking into a corner still pays the full price. Turn it on against a border with nobody on it before you turn it on for players.
 </Warning>
 
 ## The hub
@@ -74,8 +121,5 @@ An honest list. None of these stop the system working.
   </Accordion>
   <Accordion title="Configuration is per server">
     Four servers means four files. The grid settings in particular have to agree, which is why leaving them at the defaults is worth doing.
-  </Accordion>
-  <Accordion title="No cross-geo">
-    Splitting one world across two hosting providers needs WAN addresses, a public host per geo and a Redis in each place reachable from the other. It works, but it is not the shape this page is about.
   </Accordion>
 </AccordionGroup>

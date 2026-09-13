@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" font-family="system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" width="640" height="430" viewBox="0 0 640 430" fill="none">
+<text x="320" y="18" text-anchor="middle" font-size="11" fill="#3d6b5e">players connect here, and only here</text>
+<rect x="215" y="28" width="210" height="52" rx="7" fill="#1E6F5C" fill-opacity="0.18" stroke="#1E6F5C" stroke-opacity="0.75" stroke-width="1.5"/><text x="320.0" y="52" text-anchor="middle" font-size="13.5" font-weight="700" fill="#14503F">Velocity proxy</text><text x="320.0" y="70" text-anchor="middle" font-size="11" fill="#3d6b5e">the only public Minecraft port</text>
+<line x1="320" y1="80" x2="105" y2="143" stroke="#1E6F5C" stroke-width="1.8"/><polygon points="105,143 100,134 110,134" fill="#1E6F5C"/>
+<line x1="320" y1="80" x2="320" y2="143" stroke="#1E6F5C" stroke-width="1.8"/><polygon points="320,143 315,134 325,134" fill="#1E6F5C"/>
+<line x1="320" y1="80" x2="535" y2="143" stroke="#1E6F5C" stroke-width="1.8"/><polygon points="535,143 530,134 540,134" fill="#1E6F5C"/>
+<text x="320" y="122" text-anchor="middle" font-size="10.5" font-weight="600" fill="#14503F">proxy dials each shard.address</text>
+<rect x="20" y="152" width="170" height="76" rx="7" fill="#1E6F5C" fill-opacity="0.1" stroke="#1E6F5C" stroke-opacity="0.75" stroke-width="1.5"/><text x="105.0" y="176" text-anchor="middle" font-size="13.5" font-weight="700" fill="#14503F">Provider A</text><text x="105.0" y="194" text-anchor="middle" font-size="11" fill="#3d6b5e">world-r0, world-r1</text><text x="105.0" y="210" text-anchor="middle" font-size="11" fill="#3d6b5e">public host:port</text>
+<rect x="235" y="152" width="170" height="76" rx="7" fill="#1E6F5C" fill-opacity="0.1" stroke="#1E6F5C" stroke-opacity="0.75" stroke-width="1.5"/><text x="320.0" y="176" text-anchor="middle" font-size="13.5" font-weight="700" fill="#14503F">Provider B</text><text x="320.0" y="194" text-anchor="middle" font-size="11" fill="#3d6b5e">world-r2</text><text x="320.0" y="210" text-anchor="middle" font-size="11" fill="#3d6b5e">public host:port</text>
+<rect x="450" y="152" width="170" height="76" rx="7" fill="#1E6F5C" fill-opacity="0.1" stroke="#1E6F5C" stroke-opacity="0.75" stroke-width="1.5"/><text x="535.0" y="176" text-anchor="middle" font-size="13.5" font-weight="700" fill="#14503F">Provider C</text><text x="535.0" y="194" text-anchor="middle" font-size="11" fill="#3d6b5e">hub</text><text x="535.0" y="210" text-anchor="middle" font-size="11" fill="#3d6b5e">public host:port</text>
+<line x1="196" y1="190" x2="229" y2="190" stroke="#1E6F5C" stroke-width="1.6" stroke-dasharray="4 4" stroke-opacity="0.55"/>
+<line x1="206" y1="182" x2="220" y2="198" stroke="#14503F" stroke-width="2"/>
+<line x1="220" y1="182" x2="206" y2="198" stroke="#14503F" stroke-width="2"/>
+<line x1="411" y1="190" x2="444" y2="190" stroke="#1E6F5C" stroke-width="1.6" stroke-dasharray="4 4" stroke-opacity="0.55"/>
+<line x1="421" y1="182" x2="435" y2="198" stroke="#14503F" stroke-width="2"/>
+<line x1="435" y1="182" x2="421" y2="198" stroke="#14503F" stroke-width="2"/>
+<text x="320" y="252" text-anchor="middle" font-size="11" font-weight="600" fill="#14503F">shards never connect to each other</text>
+<line x1="105" y1="262" x2="105" y2="316" stroke="#1E6F5C" stroke-width="1.8"/><polygon points="105,316 100,307 110,307" fill="#1E6F5C"/>
+<line x1="320" y1="262" x2="320" y2="316" stroke="#1E6F5C" stroke-width="1.8"/><polygon points="320,316 315,307 325,307" fill="#1E6F5C"/>
+<line x1="535" y1="262" x2="535" y2="316" stroke="#1E6F5C" stroke-width="1.8"/><polygon points="535,316 530,307 540,307" fill="#1E6F5C"/>
+<rect x="150" y="325" width="340" height="76" rx="7" fill="#1E6F5C" fill-opacity="0.18" stroke="#1E6F5C" stroke-opacity="0.75" stroke-width="1.5"/><text x="320.0" y="349" text-anchor="middle" font-size="13.5" font-weight="700" fill="#14503F">MongoDB and Redis</text><text x="320.0" y="367" text-anchor="middle" font-size="11" fill="#3d6b5e">every box above reaches these</text><text x="320.0" y="383" text-anchor="middle" font-size="11" fill="#3d6b5e">authenticated, over TLS</text>
+<text x="320" y="420" text-anchor="middle" font-size="10.5" fill="#3d6b5e">one geo. Nothing here is cross-geo.</text>
+</svg>
