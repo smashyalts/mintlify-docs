@@ -20,7 +20,7 @@ public final class MyPlugin extends JavaPlugin implements PlayerDataAdapter {
 
     @Override
     public JsonObject save(Player player) {
-        return state.get(player.getUniqueId());   // null stores nothing
+        return state.get(player.getUniqueId());   // null DELETES; see below
     }
 
     @Override
@@ -44,8 +44,48 @@ public final class MyPlugin extends JavaPlugin implements PlayerDataAdapter {
 
 `save` is called on the main thread immediately before a snapshot is taken: on a crossing, on the periodic save, and on quit. `load` is called on the main thread once the player has arrived and their vanilla state is applied, and before the arrival event fires. It receives null for a player this adapter has never seen.
 
+## The four sharp edges
+
+All four come from one fact worth stating on its own: **the whole `pluginData` map is written on every save, not merged into.** A key that is not in the map you just produced is a key that is no longer in the record.
+
+### Returning null deletes
+
+`save` returning null does not mean "leave what is stored alone". It means your key is absent from the map, and the map replaces the stored one, so **the stored value for your key is gone**.
+
+That is correct for a player who genuinely has no state. It is data loss for a player whose state you merely could not find — an in-memory map that was cleared, a cache that has not populated yet, a lookup that failed.
+
 <Warning>
-If `load` throws, the session still goes live and the next save persists whatever your plugin defaults to. An unreadable inventory is a bad arrival; an unreadable adapter that also zeroes somebody's balance is a data loss. Make `load` total.
+  Return null only when null is the truth. If you cannot tell whether the player has state, you cannot safely return null: return what you last knew instead, or do not register the adapter until you can answer.
+</Warning>
+
+### A throwing `save` is treated exactly like null
+
+If `save` throws a `RuntimeException` it is caught and logged as
+
+```
+[shard] PlayerDataAdapter myplugin:quests failed to save Steve: ...
+```
+
+and then the key is omitted — which, per above, deletes it. A transient bug in `save` is therefore a silent delete of that player's state, with a log line as the only evidence. The other adapters are unaffected.
+
+### A throwing `load` costs that player's state on the next save
+
+Each adapter's `load` is wrapped on its own, so a `RuntimeException` from yours is logged and the remaining adapters still load. The player goes live regardless, with whatever your plugin defaults to — and the next save persists those defaults over the stored record.
+
+That is the sequence to be afraid of: throw on load, go live with an empty balance, save the empty balance. Make `load` total.
+
+<Note>
+  Only `RuntimeException` is caught per adapter. An `Error` — a `LinkageError` from a version mismatch is the realistic one — escapes the loop, so **every adapter after yours is skipped too** and those players load with defaults as well.
+</Note>
+
+### A duplicate key silently evicts the first adapter
+
+`registerPlayerData` removes any adapter already holding the same `key()` and then adds yours. No exception, no warning, no log line. The evicted adapter simply stops being called: its `save` never runs again, so the stored value under that key becomes whatever the new owner writes, and its `load` never runs, so its in-memory state is never restored.
+
+Registration order decides the winner, and plugin load order is not something you control. Namespace the key with your own plugin name — `myplugin:quests`, not `quests` — and the collision cannot happen.
+
+<Warning>
+  The same mechanism applies to `unregisterPlayerData`. Once your adapter is off the list its key stops being written, so any save that happens for an online player while you are unregistered drops your data from their record. Unregistering at runtime, while players are online, is the case to avoid.
 </Warning>
 
 ## Keep it small
