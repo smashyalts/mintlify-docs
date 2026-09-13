@@ -1,86 +1,231 @@
 ---
-title: 'Quickstart'
-description: 'Start building awesome documentation in under 5 minutes'
+title: "Quickstart"
+description: "The smallest network that actually works, in about twenty minutes"
+icon: "rocket"
 ---
 
-## Setup your development
+The smallest useful Atlas network is **two regions**, and it is worth building before four: one border is enough to see everything the system does, and half the servers to pay for while you learn it.
 
-Learn how to update your docs locally and deploy them to the public.
+Every value on this page comes from the container harness in `docker-test/`, which is run against each change, so these are settings known to boot rather than settings that ought to.
 
-### Edit and preview
+<Frame caption="What you are about to build. Two regions side by side, one border down the middle.">
+  <img className="block dark:hidden" src="/diagrams/quickstart-grid-light.svg" alt="Two regions side by side, region 0 covering x -2048 to 0 and region 1 covering x 0 to 2048, with spawn on the border between them" />
+  <img className="hidden dark:block" src="/diagrams/quickstart-grid-dark.svg" alt="Two regions side by side, region 0 covering x -2048 to 0 and region 1 covering x 0 to 2048, with spawn on the border between them" />
+</Frame>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Clone your docs locally">
-    During the onboarding process, we created a repository on your Github with
-    your docs content. You can find this repository on our
-    [dashboard](https://dashboard.mintlify.com). To clone the repository
-    locally, follow these
-    [instructions](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository)
-    in your terminal.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Preview changes">
-    Previewing helps you make sure your changes look as intended. We built a
-    command line interface to render these changes locally. 1. Install the
-    [Mintlify CLI](https://www.npmjs.com/package/mintlify) to preview the
-    documentation changes locally with this command: ``` npm i -g mintlify ```
-    2. Run the following command at the root of your documentation (where
-    `mint.json` is): ``` mintlify dev ```
-  </Accordion>
-</AccordionGroup>
+That is six processes: two shards, a hub, a proxy, MongoDB and Redis. They can all be on one machine to start with.
 
-### Deploy your changes
+<Tip>
+  If you have Docker and the repo, skip the whole page: `docker-test/setup.sh` builds exactly this network and prints the command to start it. Come back here when you want to know what it did.
+</Tip>
 
-<AccordionGroup>
+## Before you start
 
-<Accordion icon="message-bot" title="Install our Github app">
-  Our Github app automatically deploys your changes to your docs site, so you
-  don't need to manage deployments yourself. You can find the link to install on
-  your [dashboard](https://dashboard.mintlify.com). Once the bot has been
-  successfully installed, there should be a check mark next to the commit hash
-  of the repo.
-</Accordion>
-<Accordion icon="rocket" title="Push your changes">
-  [Commit and push your changes to
-  Git](https://docs.github.com/en/get-started/using-git/pushing-commits-to-a-remote-repository#about-git-push)
-  for your changes to update in your docs site. If you push and don't see that
-  the Github app successfully deployed your changes, you can also manually
-  update your docs through our [dashboard](https://dashboard.mintlify.com).
-</Accordion>
+| Component | Version | Note |
+| --- | --- | --- |
+| Paper | 26.2, a pinned build | Atlas compiles against the Mojang-mapped server. A different build family will not load it. |
+| Velocity | 4.0.0 | |
+| Java | 25 | |
+| MongoDB | any | A standalone `mongod` is fine. |
+| Redis | any recent | One per network, not shared. |
 
-</AccordionGroup>
+About 6 GB of RAM for all six, and the two Atlas jars: `atlas-paper.jar` for the shards, `atlas-velocity.jar` for the proxy.
 
-## Update your docs
+<Steps>
 
-Add content directly in your files with MDX syntax and React components. You can use any of our components, or even build your own.
+<Step title="Generate the world once, then copy it">
+This is the step with no error message, and the one that looks like a bug in Atlas when you skip it.
 
-<CardGroup>
+Chunk decoration is not a pure function of the seed. Two servers generating "the same" world from the same seed disagree about where the trees are, and you see it as a seam at the border where terrain does not line up.
 
-<Card title="Style Your Docs" icon="paintbrush" href="/settings/global">
-  Add flair to your docs with personalized branding.
-</Card>
+So boot **one** Paper server, let it generate, pre-generate out to the edge of the grid (4096 by 2048 blocks for this layout), stop it, and copy the `world` folder to both shards and the hub.
 
-<Card
-  title="Add API Endpoints"
-  icon="square-code"
-  href="/api-playground/configuration"
->
-  Implement your OpenAPI spec and enable API user interaction.
-</Card>
+```properties server.properties
+online-mode=false
+level-name=world
+level-seed=pick-anything
+spawn-protection=0
+allow-nether=false
+server-port=25565
+```
 
-<Card
-  title="Integrate Analytics"
-  icon="chart-mixed"
-  href="/analytics/supported-integrations"
->
-  Draw insights from user interactions with your documentation.
-</Card>
+Every shard uses this same `server.properties`, and `level-name` must match `shard.world` below. After the copy each shard keeps its own copy: what players build in region 0 lives only on region 0's server, which is the point.
+</Step>
 
-<Card
-  title="Host on a Custom Domain"
-  icon="browser"
-  href="/settings/custom-domain/subdomain"
->
-  Keep your docs on your own website's subdomain.
-</Card>
+<Step title="Start the proxy once to get a forwarding secret">
+Run Velocity once and stop it. It writes `velocity.toml` and a `forwarding.secret`. You need that secret before configuring the shards, which is why the proxy comes first.
 
+```toml velocity.toml
+online-mode = true
+player-info-forwarding-mode = "modern"
+forwarding-secret-file = "forwarding.secret"
+
+[servers]
+hub = "127.0.0.1:25570"
+
+try = [
+    "hub"
+]
+
+[forced-hosts]
+```
+
+**Only the hub is listed.** The shards register themselves out of MongoDB from their `shard.address`, so listing them here is neither needed nor wanted. Clear `[forced-hosts]` as well: a forced host naming a server that does not exist fails Velocity's own validation and the proxy will not start.
+</Step>
+
+<Step title="Configure the proxy plugin">
+Drop `atlas-velocity.jar` into the proxy's `plugins/`, and write:
+
+```yaml plugins/atlas/config.yml
+shard:
+  geo: main
+database:
+  mongo:
+    uri: "mongodb://127.0.0.1:27017/"
+  redis:
+    uri: "redis://127.0.0.1:6379"
+grid:
+  region-size: 2048
+  regions-x: 2
+  regions-z: 1
+proxy:
+  hub: hub
+```
+
+`geo` is only a name for this network. Any short word, the same on every box.
+</Step>
+
+<Step title="Configure the two shards">
+Each shard gets `atlas-paper.jar` in `plugins/`, the file below with `region` and `address` changed, and the forwarding secret in `paper-global.yml`.
+
+<CodeGroup>
+
+```yaml r0 plugins/atlas/config.yml
+shard:
+  geo: main
+  world: world
+  region: 0
+  address: "127.0.0.1:25566"
+database:
+  mongo:
+    uri: "mongodb://127.0.0.1:27017/"
+  redis:
+    uri: "redis://127.0.0.1:6379"
+grid:
+  region-size: 2048
+  regions-x: 2
+  regions-z: 1
+```
+
+```yaml r1 plugins/atlas/config.yml
+shard:
+  geo: main
+  world: world
+  region: 1
+  address: "127.0.0.1:25567"
+database:
+  mongo:
+    uri: "mongodb://127.0.0.1:27017/"
+  redis:
+    uri: "redis://127.0.0.1:6379"
+grid:
+  region-size: 2048
+  regions-x: 2
+  regions-z: 1
+```
+
+</CodeGroup>
+
+`address` is where **the proxy** dials this shard, and it is the whole of self-registration. Set each shard's `server-port` to match.
+
+Then on both shards **and the hub**:
+
+```yaml config/paper-global.yml
+proxies:
+  velocity:
+    enabled: true
+    online-mode: true
+    secret: <the forwarding secret>
+```
+
+<Warning>
+  The grid block must be identical on both shards and the proxy. A box that disagrees routes players to a server that does not own where they are standing, and nothing detects it for you. Leaving all three at their defaults is the safest way to keep them in step.
+</Warning>
+</Step>
+
+<Step title="Set up the hub">
+The hub is a plain Paper server. It gets the world copy and the same `paper-global.yml` forwarding block, and **no Atlas plugin** — it owns no region, so there is nothing for the plugin to do there.
+
+Call it `hub` and the proxy finds it. If you call it something else, set `proxy.hub` to match.
+</Step>
+
+<Step title="Start in order">
+MongoDB and Redis first, then the shards, then the hub, then the proxy.
+
+Nothing breaks if you get this wrong — a shard with no database retries, and a proxy with no shards sends everyone to the hub — but starting bottom-up means the first error you read is the real one rather than a consequence of it.
+
+Watch each shard's log for the region it claims. A misspelled setting is named rather than ignored:
+
+```
+config.yml has 1 setting(s) this version does not know: [shard.wrold]
+```
+</Step>
+
+<Step title="Check it worked">
+Join through the proxy, not through a shard, and run:
+
+```
+/shard topology
+```
+
+```
+world world: 2/2 regions alive
+  0:main/world-r0    1:main/world-r1
+```
+
+Two live owners and no dash means the shards registered themselves and the proxy can see both. A dash is a region nobody is serving.
+
+`/shard` on its own then tells you which region you are in and how far you are from the nearest edge.
+</Step>
+
+<Step title="Walk across the border">
+Spawn at 0,0 sits **exactly on the border**, in region 1 — the square starting at a line owns it. So walk west, into negative x, and you cross within a few blocks.
+
+Turn on `/shard walls` first and the boundary is drawn as a particle curtain, which makes it obvious you crossed something. `/shard bar` puts your shard, your ping and the distance to the next border in a boss bar.
+
+What you should see: no loading screen, your inventory intact, and the ground on the far side already drawn before you got there. What you should **not** see is a disconnect — if you get one, the forwarding secret is wrong on the shard you were walking into.
+</Step>
+
+</Steps>
+
+## When it does not work
+
+| Symptom | Cause |
+| --- | --- |
+| Kicked when joining any shard | Forwarding secret missing or different on that shard |
+| `/shard topology` shows a dash | That shard is not running, or its `address` is wrong |
+| Players routed to the wrong server | The grid block differs somewhere, or two networks share one Redis |
+| A visible seam at the border | The world was generated per shard instead of copied once |
+| The proxy will not start | `[forced-hosts]` still names a server that does not exist |
+
+More in [Troubleshooting](/operate/troubleshooting).
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Security" icon="shield" href="/deploy/security">
+    Read this before anyone else can reach the box. Every shard runs with `online-mode=false`, and the forwarding secret is the only thing making that safe.
+  </Card>
+
+  <Card title="Panel and VPS hosting" icon="server" href="/deploy/shared-hosting">
+    The same network on rented servers, including spread across two or three providers over the internet.
+  </Card>
+
+  <Card title="Grid and ownership" icon="grid" href="/concepts/grid-and-ownership">
+    Why the border falls where it does, and what stops two servers both owning you.
+  </Card>
+
+  <Card title="Configuration" icon="sliders" href="/deploy/configuration">
+    Every setting, and which ones must match across the network.
+  </Card>
 </CardGroup>
