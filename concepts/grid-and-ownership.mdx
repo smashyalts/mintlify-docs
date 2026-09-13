@@ -4,74 +4,303 @@ description: "Who owns a block, who owns a player, and what stops two servers bo
 icon: "grid"
 ---
 
-Two different things are owned, in two different ways. Ground is owned statically, by arithmetic every node agrees on. Players are owned dynamically, by a token in a database.
+Atlas cuts your world into squares. Each square is run by one Paper server, and **only that server is allowed to change anything inside it**.
 
-## The grid
+That single rule is the whole design. Everything else on this page exists to keep it true while players walk around.
 
-A grid is three numbers: `region-size`, `regions-x` and `regions-z`. It is centred on the origin, so borders fall on multiples of the region size.
+## Your world, cut into squares
 
+Out of the box Atlas makes four squares of 2048 x 2048 blocks, arranged 2 across and 2 down, centred on the world origin.
+
+<Frame caption="The default grid. x increases to the east, z increases to the south. Each square is one Paper server.">
+  <svg viewBox="0 0 600 480" width="100%" role="img" aria-label="A two by two grid of four regions centred on the world origin, numbered 0 and 1 on the top row and 2 and 3 on the bottom row">
+  <text x="320" y="24" textAnchor="middle" fontSize="13" fontWeight="600" fill="currentColor">north (-z)</text>
+
+  <rect x="140" y="60" width="180" height="180" fill="#1E6F5C" fillOpacity="0.16" />
+
+  <rect x="320" y="60" width="180" height="180" fill="#1E6F5C" fillOpacity="0.07" />
+
+  <rect x="140" y="240" width="180" height="180" fill="#1E6F5C" fillOpacity="0.07" />
+
+  <rect x="320" y="240" width="180" height="180" fill="#1E6F5C" fillOpacity="0.16" />
+
+  <rect x="140" y="60" width="360" height="360" fill="none" stroke="#1E6F5C" strokeOpacity="0.9" strokeWidth="2" />
+
+  <line x1="320" y1="60" x2="320" y2="420" stroke="#1E6F5C" strokeOpacity="0.9" strokeWidth="2" />
+
+  <line x1="140" y1="240" x2="500" y2="240" stroke="#1E6F5C" strokeOpacity="0.9" strokeWidth="2" />
+
+  <text x="140" y="48" textAnchor="middle" fontSize="11" fill="currentColor" fillOpacity="0.7">x -2048</text>
+  <text x="320" y="48" textAnchor="middle" fontSize="11" fill="currentColor" fillOpacity="0.7">x 0</text>
+  <text x="500" y="48" textAnchor="middle" fontSize="11" fill="currentColor" fillOpacity="0.7">x 2048</text>
+  <text x="132" y="64" textAnchor="end" fontSize="11" fill="currentColor" fillOpacity="0.7">z -2048</text>
+  <text x="132" y="244" textAnchor="end" fontSize="11" fill="currentColor" fillOpacity="0.7">z 0</text>
+  <text x="132" y="424" textAnchor="end" fontSize="11" fill="currentColor" fillOpacity="0.7">z 2048</text>
+
+  <text x="230" y="136" textAnchor="middle" fontSize="17" fontWeight="700" fill="currentColor">Region 0</text>
+  <text x="230" y="158" textAnchor="middle" fontSize="11" fill="currentColor" fillOpacity="0.75">x -2048 to 0</text>
+  <text x="230" y="174" textAnchor="middle" fontSize="11" fill="currentColor" fillOpacity="0.75">z -2048 to 0</text>
+  <text x="230" y="196" textAnchor="middle" fontSize="10.5" fill="currentColor" fillOpacity="0.55">world-r0</text>
+
+  <text x="410" y="136" textAnchor="middle" fontSize="17" fontWeight="700" fill="currentColor">Region 1</text>
+  <text x="410" y="158" textAnchor="middle" fontSize="11" fill="currentColor" fillOpacity="0.75">x 0 to 2048</text>
+  <text x="410" y="174" textAnchor="middle" fontSize="11" fill="currentColor" fillOpacity="0.75">z -2048 to 0</text>
+  <text x="410" y="196" textAnchor="middle" fontSize="10.5" fill="currentColor" fillOpacity="0.55">world-r1</text>
+
+  <text x="230" y="316" textAnchor="middle" fontSize="17" fontWeight="700" fill="currentColor">Region 2</text>
+  <text x="230" y="338" textAnchor="middle" fontSize="11" fill="currentColor" fillOpacity="0.75">x -2048 to 0</text>
+  <text x="230" y="354" textAnchor="middle" fontSize="11" fill="currentColor" fillOpacity="0.75">z 0 to 2048</text>
+  <text x="230" y="376" textAnchor="middle" fontSize="10.5" fill="currentColor" fillOpacity="0.55">world-r2</text>
+
+  <text x="410" y="316" textAnchor="middle" fontSize="17" fontWeight="700" fill="currentColor">Region 3</text>
+  <text x="410" y="338" textAnchor="middle" fontSize="11" fill="currentColor" fillOpacity="0.75">x 0 to 2048</text>
+  <text x="410" y="354" textAnchor="middle" fontSize="11" fill="currentColor" fillOpacity="0.75">z 0 to 2048</text>
+  <text x="410" y="376" textAnchor="middle" fontSize="10.5" fill="currentColor" fillOpacity="0.55">world-r3</text>
+
+  <line x1="320" y1="240" x2="372" y2="278" stroke="#1E6F5C" strokeWidth="1.5" strokeDasharray="3 3" />
+
+  <circle cx="320" cy="240" r="5" fill="#1E6F5C" />
+
+  <text x="378" y="282" fontSize="11" fontWeight="600" fill="currentColor">world spawn 0,0 is in region 3</text>
+
+  <text x="320" y="446" textAnchor="middle" fontSize="13" fontWeight="600" fill="currentColor">south (+z)</text>
+  <text x="320" y="470" textAnchor="middle" fontSize="11" fill="currentColor" fillOpacity="0.65">4 squares of 2048 x 2048 blocks, covering 4096 x 4096 in total</text>
+</svg>
+</Frame>
+
+Regions are numbered left to right, then top to bottom, starting at the north-west corner:
+
+| Region | Runs on | Covers x | Covers z |
+| --- | --- | --- | --- |
+| 0 | `world-r0` | -2048 to 0 | -2048 to 0 |
+| 1 | `world-r1` | 0 to 2048 | -2048 to 0 |
+| 2 | `world-r2` | -2048 to 0 | 0 to 2048 |
+| 3 | `world-r3` | 0 to 2048 | 0 to 2048 |
+
+A block sitting exactly on a border line belongs to one region and never to both. The square starting at a line owns it, which is why spawn at 0,0 belongs to region 3 and not to region 0.
+
+<Note>
+  There is nothing magic about the region numbers. They are just the order the squares are counted in, and they are what you put in each server's `shard.region` setting.
+</Note>
+
+## The three numbers you choose
+
+<CardGroup cols={3}>
+  <Card title="region-size" icon="ruler">
+    How many blocks wide each square is. Default `2048`. Minimum 256, and a multiple of 16.
+  </Card>
+
+  <Card title="regions-x" icon="arrows-left-right">
+    How many squares across. Default `2`.
+  </Card>
+
+  <Card title="regions-z" icon="arrows-up-down">
+    How many squares down. Default `2`.
+  </Card>
+</CardGroup>
+
+Multiply them and you get two things at once: how many servers you need, and how big your world is.
+
+<CodeGroup>
+
+```text How many servers
+servers  =  regions-x  x  regions-z
 ```
-originX = -(regionsX * regionSize) / 2
-region  = gz * regionsX + gx    where gx = floor((x - originX) / regionSize)
+
+```text How big the world is
+world width  =  regions-x  x  region-size
+world depth  =  regions-z  x  region-size
 ```
 
-Region `i` covers a half-open square, so a block sitting exactly on a border line belongs to exactly one region and never to both. Regions are numbered row-major from the north-west corner:
+</CodeGroup>
 
-```
-        x=0   x=1
- z=0  [  0 ][  1 ]
- z=1  [  2 ][  3 ]
-```
+Some setups that people actually run:
 
-Outside the grid nobody owns anything. Players are pushed back in, entities that wander out are removed, and the region index is reported as -1.
+| Shards | regions-x | regions-z | region-size | World covered | Good for |
+| --- | --- | --- | --- | --- | --- |
+| 2 | 2 | 1 | 2048 | 4096 x 2048 | The smallest real test |
+| 4 | 2 | 2 | 2048 | 4096 x 4096 | The default. A normal SMP |
+| 4 | 4 | 1 | 1024 | 4096 x 1024 | A long east-west map |
+| 9 | 3 | 3 | 2048 | 6144 x 6144 | A big survival world |
 
-<Warning>
-The grid must be identical on every shard and every proxy. A node that disagrees routes players to a server that does not own where they are standing, and nothing detects the mismatch for you. Leaving all three unset so everyone takes the same defaults is the safest way to keep them in step.
-</Warning>
+Bigger squares mean fewer borders and fewer crossings, so fewer moving parts. Smaller squares spread load more evenly but put players near a line more often. If you are unsure, leave all three alone.
 
-Changing the grid later is a full restart of the network, not a rolling one: the region a standing player belongs to changes index.
+## The edge of the map
 
-## Two distances
+Outside the grid, nobody owns anything, so nothing may happen there. Players who reach the outer edge are pushed back inside, and entities that wander out are removed. You do not need a vanilla world border to make this work, though setting one to match keeps players from bumping into an invisible wall with no explanation.
 
-Most of the system is driven by two measurements. The distance from a point to its own region's nearest edge decides when to warm up a neighbour and which blocks are worth mirroring. The distance from a point to another region's rectangle, zero inside it, decides whether something belongs in that neighbour's ghost band.
+## What happens near a border
 
-The ghost band must be no wider than a quarter of a region, or opposite bands of the same region overlap and a shard starts mirroring its own mirrored blocks. The configuration refuses to start otherwise.
+A border is not a wall and not a loading screen. For a strip of blocks either side of every line, each server shows you what is happening on the other side.
 
-## The fenced lease
+<Frame caption="Looking down on a single border. Not to scale - the band is 64 blocks out of a 2048 block square.">
+  <svg viewBox="0 0 600 250" width="100%" role="img" aria-label="Cross-section of one border showing a 64 block ghost band on each side, with a player walking towards the line">
+  <text x="310" y="26" textAnchor="middle" fontSize="12" fontWeight="600" fill="currentColor">ghost band - 64 blocks either side</text>
 
-A player is one document in MongoDB carrying an owner, a fence, a sequence number and an expiry.
+  <rect x="40" y="70" width="270" height="100" fill="#1E6F5C" fillOpacity="0.09" />
 
-```
-{
-  _id:       "<uuid>",
-  owner:     "geo:world:region" | null,
-  fence:     long,     // +1 on every ownership change
-  seq:       long,     // +1 on every save
-  expiresAt: Date,
-  snapshot:  { ... },
-  transfer:  { to, from, token, at } | null
-}
-```
+  <rect x="310" y="70" width="260" height="100" fill="#1E6F5C" fillOpacity="0.09" />
 
-Four rules make it safe:
+  <rect x="246" y="70" width="64" height="100" fill="#1E6F5C" fillOpacity="0.3" />
+
+  <rect x="310" y="70" width="64" height="100" fill="#1E6F5C" fillOpacity="0.3" />
+
+  <rect x="40" y="70" width="530" height="100" fill="none" stroke="#1E6F5C" strokeOpacity="0.8" strokeWidth="1.5" />
+
+  <line x1="310" y1="46" x2="310" y2="196" stroke="#1E6F5C" strokeWidth="2.5" />
+
+  <text x="143" y="106" textAnchor="middle" fontSize="14" fontWeight="700" fill="currentColor">Region 0</text>
+  <text x="143" y="126" textAnchor="middle" fontSize="11" fill="currentColor" fillOpacity="0.7">server A owns these blocks</text>
+  <text x="472" y="106" textAnchor="middle" fontSize="14" fontWeight="700" fill="currentColor">Region 1</text>
+  <text x="472" y="126" textAnchor="middle" fontSize="11" fill="currentColor" fillOpacity="0.7">server B owns these blocks</text>
+
+  <circle cx="268" cy="148" r="6" fill="#1E6F5C" />
+
+  <line x1="278" y1="148" x2="300" y2="148" stroke="#1E6F5C" strokeWidth="2" />
+
+  <polygon points="308,148 298,143 298,153" fill="#1E6F5C" />
+
+  <text x="268" y="190" textAnchor="middle" fontSize="11" fontWeight="600" fill="currentColor">you</text>
+  <text x="310" y="218" textAnchor="middle" fontSize="11.5" fill="currentColor" fillOpacity="0.8">inside the shaded strip you see, hit and talk to the other side</text>
+  <text x="310" y="238" textAnchor="middle" fontSize="11.5" fill="currentColor" fillOpacity="0.8">the moment you cross the line, server B takes over</text>
+</svg>
+</Frame>
+
+Two measurements drive this, and neither is something you set directly:
+
+- **How close you are to your own square's edge** decides when the neighbour is warmed up in advance, and which of your blocks are worth copying over.
+- **How close you are to the neighbour's square** decides whether you show up as a ghost on their side.
+
+The band is `tuning.ghost-width`, 64 blocks by default. It can never be wider than a quarter of a region, because two bands of the same square would overlap and a server would start copying its own copies. Atlas refuses to start rather than let that happen. The details are in [Ghosts and blocks](/concepts/ghosts-and-blocks).
+
+## Two things are owned, in two different ways
+
+<CardGroup cols={2}>
+  <Card title="Ground never moves" icon="mountain">
+    Which server owns a block is pure arithmetic on its coordinates. Every server and every proxy works it out independently and always gets the same answer. Nothing is looked up, so nothing can go stale or disagree.
+  </Card>
+
+  <Card title="Players move constantly" icon="person-walking">
+    A player cannot be owned by arithmetic, because they walk. Instead each player has one ticket in the database saying which server holds them right now, and handing the ticket over is a single, indivisible step.
+  </Card>
+</CardGroup>
+
+## The ticket, in plain terms
+
+Think of it as a numbered baton. There is exactly one per player, and the number goes up by one every time it changes hands.
+
+<Frame caption="Ownership of a player over time. The two servers touch but never overlap.">
+  <svg viewBox="0 0 600 200" width="100%" role="img" aria-label="A timeline showing server A in charge, then a single handoff moment, then server B in charge, with the ticket number going from 7 to 8">
+  <rect x="60" y="92" width="240" height="52" rx="6" fill="#1E6F5C" fillOpacity="0.18" stroke="#1E6F5C" strokeOpacity="0.7" strokeWidth="1.5" />
+
+  <rect x="300" y="92" width="240" height="52" rx="6" fill="#1E6F5C" fillOpacity="0.09" stroke="#1E6F5C" strokeOpacity="0.7" strokeWidth="1.5" />
+
+  <text x="180" y="124" textAnchor="middle" fontSize="13" fontWeight="600" fill="currentColor">Server A is in charge</text>
+  <text x="420" y="124" textAnchor="middle" fontSize="13" fontWeight="600" fill="currentColor">Server B is in charge</text>
+
+  <line x1="300" y1="62" x2="300" y2="168" stroke="#1E6F5C" strokeWidth="2.5" strokeDasharray="5 4" />
+
+  <circle cx="300" cy="118" r="7" fill="#1E6F5C" />
+
+  <text x="300" y="50" textAnchor="middle" fontSize="12" fontWeight="700" fill="currentColor">one database write</text>
+  <text x="300" y="32" textAnchor="middle" fontSize="11" fill="currentColor" fillOpacity="0.7">there is no in-between moment</text>
+
+  <text x="180" y="166" textAnchor="middle" fontSize="12" fill="currentColor" fillOpacity="0.8">ticket number 7</text>
+  <text x="420" y="166" textAnchor="middle" fontSize="12" fill="currentColor" fillOpacity="0.8">ticket number 8</text>
+  <text x="300" y="192" textAnchor="middle" fontSize="11" fill="currentColor" fillOpacity="0.65">A can still be mid-save here, and every write it attempts is rejected</text>
+</svg>
+</Frame>
+
+Four rules make that safe. None of them need anything special from your database.
 
 <Steps>
-  <Step title="Only the owner writes, and only with the current fence">
-    Every update filters on both. A late write from a shard that has lost the player matches nothing, returns empty, and the caller stops rather than clobbering the new owner's state.
+  <Step title="Only the holder may save, and only with the current number">
+    Every save says "I am server A and I hold ticket 7". If the ticket has moved on to 8, the save matches nothing and is thrown away. A server that lagged out and came back cannot overwrite what happened while it was gone.
   </Step>
-  <Step title="A handoff is one update">
-    Storing the snapshot, moving ownership, bumping the fence and writing the transfer marker all happen in a single atomic update. There is no instant where the state and the ownership disagree.
+  <Step title="Handing over is one indivisible step">
+    Saving the player's state, changing the holder and bumping the number all happen in the same single write. There is no instant where the inventory says one thing and the ownership says another.
   </Step>
-  <Step title="A lease expires">
-    A shard that crashes stops renewing. Once the expiry passes another shard may take over, and its higher fence fences off the zombie if it ever comes back.
+  <Step title="A crashed server loses its grip on its own">
+    The holder has to keep renewing the ticket. A server that dies stops renewing, and after 30 seconds someone else may pick the player up. If the dead server wakes up later, its number is out of date and it is locked out.
   </Step>
-  <Step title="A revert only works before the target claims it">
-    Undoing a handoff matches on the exact fence the handoff produced. The moment the target acquires, that fence has moved, so a source and a target can never both conclude they hold the player.
+  <Step title="A handoff can be undone, but only before it lands">
+    If the other side never answers, the first server can take the player back. That undo only works while the number is still exactly what the handoff produced. Once the target has actually claimed the player, the number has moved and the undo fails, so two servers can never both conclude they hold the same person.
   </Step>
 </Steps>
 
-## Why this needs no transactions
+## Before you change any of this
 
-Every one of those is a single-document update, and single-document atomicity is something every MongoDB deployment provides, standalone included. Atlas asks the server what it is on startup and reads with `majority` on a replica set or `local` on a standalone, which is the same guarantee on one node rather than a weaker one.
+<Warning>
+  **The grid must be identical on every shard and every proxy.** A single server with a different `region-size` will route players to a shard that does not own where they are standing, and nothing will detect it for you. Leaving all three settings unset, so everyone takes the same defaults, is the safest way to keep them in step.
+</Warning>
 
-The only thing a standalone gives up is the multi-document transaction helper offered to other plugins. Nothing in the crossing path uses it.
+<Warning>
+  **Changing the grid later is a full network restart, not a rolling one.** Resizing the squares changes which region a standing player belongs to, so every shard and proxy has to come back with the new numbers together.
+</Warning>
+
+## Under the hood
+
+The exact behaviour, for when you need to verify something rather than understand it.
+
+<AccordionGroup>
+  <Accordion title="The arithmetic" icon="calculator">
+    The grid is centred on the origin, so borders fall on multiples of the region size.
+
+    ```text
+    originX = -(regionsX * regionSize) / 2
+    region  = gz * regionsX + gx    where gx = floor((x - originX) / regionSize)
+    ```
+
+    Region `i` covers a half-open square `[minX, maxX)` by `[minZ, maxZ)`, so a block on a border line belongs to exactly one region. Numbering is row-major from the north-west corner:
+
+    ```text
+            x=0   x=1
+     z=0  [  0 ][  1 ]
+     z=1  [  2 ][  3 ]
+    ```
+
+    Outside the grid the region index is reported as `-1`. The grid is derived from config and never from Redis, so a topology outage cannot change who owns what.
+  </Accordion>
+
+  <Accordion title="The two distances" icon="ruler-combined">
+    The distance from a point to its own region's nearest edge decides when to warm up a neighbour and which blocks are worth mirroring. The distance from a point to another region's rectangle, zero inside it, decides whether something belongs in that neighbour's ghost band.
+
+    The ghost band must be no wider than a quarter of a region, or opposite bands of the same region overlap and a shard starts mirroring its own mirrored blocks. The configuration refuses to start otherwise.
+  </Accordion>
+
+  <Accordion title="The fenced lease document" icon="lock">
+    A player is one document in MongoDB carrying an owner, a fence, a sequence number and an expiry.
+
+    ```text
+    {
+      _id:       "<uuid>",
+      owner:     "geo:world:region" | null,
+      fence:     long,     // +1 on every ownership change
+      seq:       long,     // +1 on every save
+      expiresAt: Date,
+      snapshot:  { ... },
+      transfer:  { to, from, token, at } | null
+    }
+    ```
+
+    The "ticket number" above is `fence`. Every update filters on both `owner` and `fence`; a late write from a shard that has lost the player matches nothing, returns empty, and the caller stops rather than clobbering the new owner's state. The handoff writes the snapshot, moves ownership, bumps the fence and writes the transfer marker in a single atomic update. A revert matches on the exact fence the handoff produced.
+  </Accordion>
+
+  <Accordion title="Why this needs no transactions" icon="database">
+    Every one of those is a single-document update, and single-document atomicity is something every MongoDB deployment provides, standalone included. Atlas asks the server what it is on startup and reads with `majority` on a replica set or `local` on a standalone, which is the same guarantee on one node rather than a weaker one.
+
+    The only thing a standalone gives up is the multi-document transaction helper offered to other plugins. Nothing in the crossing path uses it.
+  </Accordion>
+</AccordionGroup>
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="The crossing" icon="person-walking" href="/concepts/crossing">
+    What actually happens in the second a player steps over a line.
+  </Card>
+
+  <Card title="Configuration" icon="sliders" href="/deploy/configuration">
+    Every setting, including the grid ones, and which must match across the network.
+  </Card>
+</CardGroup>
