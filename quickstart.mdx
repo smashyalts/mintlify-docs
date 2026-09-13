@@ -1,22 +1,22 @@
 ---
 title: "Quickstart"
-description: "The smallest network that actually works, in about twenty minutes"
+description: "The smallest network that actually works, on a panel, in about twenty minutes"
 icon: "rocket"
 ---
 
-The smallest useful Atlas network is **two regions**, and it is worth building before four: one border is enough to see everything the system does, and half the servers to pay for while you learn it.
+This page builds a **two region** network on a Pterodactyl-style panel, because that is where most Atlas networks run. One border is enough to see everything the system does, at half the servers to learn on. [Going to four](#going-to-four-regions) is one extra step once it works, and [sizing it for a real SMP](#sizing-the-world-for-a-real-smp) is one number.
 
-Every value on this page comes from the container harness in `docker-test/`, which is run against each change, so these are settings known to boot rather than settings that ought to.
+Everything here works the same on a plain VPS or on one machine — the only panel-specific part is where addresses and ports come from.
 
 <Frame caption="What you are about to build. Two regions side by side, one border down the middle.">
   <img className="block dark:hidden" src="/diagrams/quickstart-grid-light.svg" alt="Two regions side by side, region 0 covering x -2048 to 0 and region 1 covering x 0 to 2048, with spawn on the border between them" />
   <img className="hidden dark:block" src="/diagrams/quickstart-grid-dark.svg" alt="Two regions side by side, region 0 covering x -2048 to 0 and region 1 covering x 0 to 2048, with spawn on the border between them" />
 </Frame>
 
-That is six processes: two shards, a hub, a proxy, MongoDB and Redis. They can all be on one machine to start with.
+On a panel that is **four servers you rent** — two shards, a hub, a proxy — plus MongoDB and Redis, which are not Minecraft servers and usually come from somewhere else.
 
 <Tip>
-  If you have Docker and the repo, skip the whole page: `docker-test/setup.sh` builds exactly this network and prints the command to start it. Come back here when you want to know what it did.
+  If you have Docker and the repo, `docker-test/setup.sh` builds this exact network locally and prints the command to start it. Every value on this page comes from that harness, which is run against each change, so these are settings known to boot.
 </Tip>
 
 ## Before you start
@@ -25,35 +25,58 @@ That is six processes: two shards, a hub, a proxy, MongoDB and Redis. They can a
 | --- | --- | --- |
 | Paper | 26.2, a pinned build | Atlas compiles against the Mojang-mapped server. A different build family will not load it. |
 | Velocity | 4.0.0 | |
-| Java | 25 | |
+| Java | 25 | **Check your panel offers it before you buy.** This is the usual blocker. |
 | MongoDB | any | A standalone `mongod` is fine. |
-| Redis | any recent | One per network, not shared. |
+| Redis | any recent | One per network, not shared with anything. |
 
-About 6 GB of RAM for all six, and the two Atlas jars: `atlas-paper.jar` for the shards, `atlas-velocity.jar` for the proxy.
+Roughly 6 GB of RAM across the four servers, and the two Atlas jars: `atlas-paper.jar` for the shards, `atlas-velocity.jar` for the proxy.
+
+<Warning>
+  Most panels do not offer Java 25 or a pinned Paper 26.2 egg yet, and neither is something you can work around from inside the container. Confirm both with your host first — a mismatch is a startup crash, not a degradation.
+</Warning>
+
+## On a panel specifically
+
+Three things work differently to a VPS, and all three cause the same confused hour if nobody says them:
+
+<AccordionGroup>
+  <Accordion title="Ports come from your allocation, not from you" icon="plug">
+    Each server gets an allocation — an IP and port the panel assigns. You do not choose `server-port`; the panel sets it. What you *do* choose is `shard.address`, and it must be the allocation the **proxy** can dial, which on most panels is the public one.
+  </Accordion>
+  <Accordion title="The panel injects environment variables" icon="sliders">
+    Atlas reads settings from the environment and from `config.yml`, and **the file wins**. That is deliberate, but it means an operator who edits a panel variable and sees nothing change has no way to find out why. Put your settings in `plugins/atlas/config.yml` and treat the panel variables as unused.
+  </Accordion>
+  <Accordion title="You usually cannot close the shard ports" icon="shield">
+    Every server you rent gets its own public address, and no firewall you control. So the forwarding secret is doing **all** of the security work. [Read Security](/deploy/security) before anyone else knows your IP.
+  </Accordion>
+</AccordionGroup>
+
+## Build it
 
 <Steps>
 
-<Step title="Generate the world once, then copy it">
+<Step title="Generate the world once, then copy it to every server">
 This is the step with no error message, and the one that looks like a bug in Atlas when you skip it.
 
-Chunk decoration is not a pure function of the seed. Two servers generating "the same" world from the same seed disagree about where the trees are, and you see it as a seam at the border where terrain does not line up.
+Chunk decoration is not a pure function of the seed ([PaperMC/Paper#14125](https://github.com/PaperMC/Paper/issues/14125)). Two servers generating "the same" world from the same seed disagree about where the trees are, and you see it at the border as a seam where terrain does not line up.
 
-So boot **one** Paper server, let it generate, pre-generate out to the edge of the grid (4096 by 2048 blocks for this layout), stop it, and copy the `world` folder to both shards and the hub.
+So generate **once**, locally or on one of the servers: boot Paper, pre-generate out to the edge of the grid (4096 by 2048 blocks for this layout), stop it, then upload that one `world` folder to both shards and the hub over SFTP.
 
 ```properties server.properties
-online-mode=false
 level-name=world
 level-seed=pick-anything
+online-mode=false
 spawn-protection=0
 allow-nether=false
-server-port=25565
 ```
 
-Every shard uses this same `server.properties`, and `level-name` must match `shard.world` below. After the copy each shard keeps its own copy: what players build in region 0 lives only on region 0's server, which is the point.
+Every shard uses the same `level-name`, and it must match `shard.world` below. Leave `server-port` to the panel.
+
+After the copy each shard keeps its own copy, and what players build in region 0 lives only on region 0's server. That is the point, and it is also why disk cost multiplies by the number of shards — see [sizing](#sizing-the-world-for-a-real-smp).
 </Step>
 
 <Step title="Start the proxy once to get a forwarding secret">
-Run Velocity once and stop it. It writes `velocity.toml` and a `forwarding.secret`. You need that secret before configuring the shards, which is why the proxy comes first.
+Install Velocity on the proxy server, start it, stop it. It writes `velocity.toml` and a `forwarding.secret`. You need that secret before the shards can be configured, which is why the proxy comes first.
 
 ```toml velocity.toml
 online-mode = true
@@ -61,7 +84,7 @@ player-info-forwarding-mode = "modern"
 forwarding-secret-file = "forwarding.secret"
 
 [servers]
-hub = "127.0.0.1:25570"
+hub = "10.0.0.5:25570"
 
 try = [
     "hub"
@@ -74,16 +97,16 @@ try = [
 </Step>
 
 <Step title="Configure the proxy plugin">
-Drop `atlas-velocity.jar` into the proxy's `plugins/`, and write:
+`atlas-velocity.jar` into the proxy's `plugins/`, then:
 
 ```yaml plugins/atlas/config.yml
 shard:
   geo: main
 database:
   mongo:
-    uri: "mongodb://127.0.0.1:27017/"
+    uri: "mongodb://user:pass@your-mongo-host:27017/"
   redis:
-    uri: "redis://127.0.0.1:6379"
+    uri: "redis://user:pass@your-redis-host:6379"
 grid:
   region-size: 2048
   regions-x: 2
@@ -105,12 +128,12 @@ shard:
   geo: main
   world: world
   region: 0
-  address: "127.0.0.1:25566"
+  address: "203.0.113.10:25566"
 database:
   mongo:
-    uri: "mongodb://127.0.0.1:27017/"
+    uri: "mongodb://user:pass@your-mongo-host:27017/"
   redis:
-    uri: "redis://127.0.0.1:6379"
+    uri: "redis://user:pass@your-redis-host:6379"
 grid:
   region-size: 2048
   regions-x: 2
@@ -122,12 +145,12 @@ shard:
   geo: main
   world: world
   region: 1
-  address: "127.0.0.1:25567"
+  address: "203.0.113.11:25567"
 database:
   mongo:
-    uri: "mongodb://127.0.0.1:27017/"
+    uri: "mongodb://user:pass@your-mongo-host:27017/"
   redis:
-    uri: "redis://127.0.0.1:6379"
+    uri: "redis://user:pass@your-redis-host:6379"
 grid:
   region-size: 2048
   regions-x: 2
@@ -136,7 +159,7 @@ grid:
 
 </CodeGroup>
 
-`address` is where **the proxy** dials this shard, and it is the whole of self-registration. Set each shard's `server-port` to match.
+`address` is that server's own allocation — the one the proxy dials — and setting it is the whole of self-registration.
 
 Then on both shards **and the hub**:
 
@@ -156,7 +179,7 @@ proxies:
 <Step title="Set up the hub">
 The hub is a plain Paper server. It gets the world copy and the same `paper-global.yml` forwarding block, and **no Atlas plugin** — it owns no region, so there is nothing for the plugin to do there.
 
-Call it `hub` and the proxy finds it. If you call it something else, set `proxy.hub` to match.
+Name it `hub` and the proxy finds it. If you call it something else, set `proxy.hub` to match.
 </Step>
 
 <Step title="Start in order">
@@ -164,7 +187,7 @@ MongoDB and Redis first, then the shards, then the hub, then the proxy.
 
 Nothing breaks if you get this wrong — a shard with no database retries, and a proxy with no shards sends everyone to the hub — but starting bottom-up means the first error you read is the real one rather than a consequence of it.
 
-Watch each shard's log for the region it claims. A misspelled setting is named rather than ignored:
+Watch each shard's console for the region it claims. A misspelled setting is named rather than ignored:
 
 ```
 config.yml has 1 setting(s) this version does not know: [shard.wrold]
@@ -191,22 +214,80 @@ Two live owners and no dash means the shards registered themselves and the proxy
 <Step title="Walk across the border">
 Spawn at 0,0 sits **exactly on the border**, in region 1 — the square starting at a line owns it. So walk west, into negative x, and you cross within a few blocks.
 
-Turn on `/shard walls` first and the boundary is drawn as a particle curtain, which makes it obvious you crossed something. `/shard bar` puts your shard, your ping and the distance to the next border in a boss bar.
+Turn on `/shard walls` first and the boundary is drawn as a particle curtain. `/shard bar` puts your shard, your ping and the distance to the next border in a boss bar.
 
 What you should see: no loading screen, your inventory intact, and the ground on the far side already drawn before you got there. What you should **not** see is a disconnect — if you get one, the forwarding secret is wrong on the shard you were walking into.
 </Step>
 
 </Steps>
 
+## Going to four regions
+
+Rent one more shard, change one number on every box, and restart the network.
+
+```yaml
+grid:
+  region-size: 2048
+  regions-x: 2
+  regions-z: 2     # was 1
+```
+
+Set the new servers to `region: 2` and `region: 3`, give each its `address`, and copy the same world folder to them. Region numbering is left to right then top to bottom from the north-west corner, so the layout becomes:
+
+| Region | Covers x | Covers z |
+| --- | --- | --- |
+| 0 | -2048 to 0 | -2048 to 0 |
+| 1 | 0 to 2048 | -2048 to 0 |
+| 2 | -2048 to 0 | 0 to 2048 |
+| 3 | 0 to 2048 | 0 to 2048 |
+
+Spawn at 0,0 moves from region 1 to region 3, because `regions-z` changing moves where the origin sits.
+
+<Warning>
+  **This is a full restart, not a rolling one.** Changing the grid changes which region a standing player belongs to, so every shard and the proxy must come back with the new numbers together. Do it with nobody online.
+</Warning>
+
+## Sizing the world for a real SMP
+
+A 2048 region is a tutorial. A real SMP is tens of thousands of blocks across, and the grid handles that fine — `region-size` is the only number you change.
+
+```text
+world width = regions-x  x  region-size
+radius      = (regions-x x region-size) / 2
+```
+
+`region-size` must be at least 256 and a multiple of 16. There is no upper limit in Atlas.
+
+| Radius you want | Grid | `region-size` | Chunks to generate | World copy, **per shard** |
+| --- | --- | --- | --- | --- |
+| 2,048 | 2x2 | 2048 | 65,536 | under 1 GB |
+| 5,000 | 2x2 | 4992 | 389,376 | 2-3 GB |
+| 10,000 | 2x2 | 10000 | 1,562,500 | 6-12 GB |
+| 25,000 | 2x2 | 24992 | 9,759,376 | 38-75 GB |
+| 50,000 | 2x2 | 50000 | 39,062,500 | 150-300 GB |
+
+<Warning>
+  **The copy is the constraint, not the grid.** Every shard holds a full copy of the whole world, so disk is world size times shard count — and more shards does not divide the world up, it multiplies it. A 50,000 radius world at 4 shards is somewhere north of half a terabyte of panel storage, plus pre-generating 39 million chunks once and uploading the result four times.
+</Warning>
+
+Splitting into more regions does not help this: 4x4 at the same radius is the same 39 million chunks, copied sixteen times instead of four. What more regions buys is simulation headroom — more players and more redstone spread over more CPUs — not less disk.
+
+So size the world to what you will actually copy. A 5,000 to 10,000 radius is a large survival map, pre-generates in hours rather than days, and fits comfortably on rented storage. Push past that and the pre-generate-and-copy step becomes the whole project.
+
+<Note>
+  Atlas requires the copy because two servers generating the same seed disagree about decoration, and the seam shows at the border. If you are planning something much larger than the table above, ask before you buy the storage: what has to be identical is the ground where two shards can both show you the same place, which is a corridor along each border rather than the whole map — but Atlas does not currently do anything to help you generate only that, and the tested path is the full copy.
+</Note>
+
 ## When it does not work
 
 | Symptom | Cause |
 | --- | --- |
 | Kicked when joining any shard | Forwarding secret missing or different on that shard |
-| `/shard topology` shows a dash | That shard is not running, or its `address` is wrong |
+| `/shard topology` shows a dash | That shard is not running, or its `address` is not what the proxy can dial |
 | Players routed to the wrong server | The grid block differs somewhere, or two networks share one Redis |
 | A visible seam at the border | The world was generated per shard instead of copied once |
 | The proxy will not start | `[forced-hosts]` still names a server that does not exist |
+| A panel variable you set does nothing | `config.yml` exists and wins over the environment |
 
 More in [Troubleshooting](/operate/troubleshooting).
 
@@ -214,11 +295,11 @@ More in [Troubleshooting](/operate/troubleshooting).
 
 <CardGroup cols={2}>
   <Card title="Security" icon="shield" href="/deploy/security">
-    Read this before anyone else can reach the box. Every shard runs with `online-mode=false`, and the forwarding secret is the only thing making that safe.
+    Read this before anyone else knows your IP. On a panel the forwarding secret is the only thing protecting the shards.
   </Card>
 
   <Card title="Panel and VPS hosting" icon="server" href="/deploy/shared-hosting">
-    The same network on rented servers, including spread across two or three providers over the internet.
+    Self-registration in full, and spreading the same network across two or three providers.
   </Card>
 
   <Card title="Grid and ownership" icon="grid" href="/concepts/grid-and-ownership">
