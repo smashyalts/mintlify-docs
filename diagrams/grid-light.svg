@@ -1,0 +1,53 @@
+<svg font-family="system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" xmlns="http://www.w3.org/2000/svg" width="600" height="480" viewBox="0 0 600 480" role="img" aria-label="A two by two grid of four regions centred on the world origin, numbered 0 and 1 on the top row and 2 and 3 on the bottom row">
+  <text x="320" y="24" text-anchor="middle" font-size="13" font-weight="600" fill="#14503F">north (-z)</text>
+
+  <rect x="140" y="60" width="180" height="180" fill="#1E6F5C" fill-opacity="0.16" />
+
+  <rect x="320" y="60" width="180" height="180" fill="#1E6F5C" fill-opacity="0.07" />
+
+  <rect x="140" y="240" width="180" height="180" fill="#1E6F5C" fill-opacity="0.07" />
+
+  <rect x="320" y="240" width="180" height="180" fill="#1E6F5C" fill-opacity="0.16" />
+
+  <rect x="140" y="60" width="360" height="360" fill="none" stroke="#1E6F5C" stroke-opacity="0.9" stroke-width="2" />
+
+  <line x1="320" y1="60" x2="320" y2="420" stroke="#1E6F5C" stroke-opacity="0.9" stroke-width="2" />
+
+  <line x1="140" y1="240" x2="500" y2="240" stroke="#1E6F5C" stroke-opacity="0.9" stroke-width="2" />
+
+  <text x="140" y="48" text-anchor="middle" font-size="11" fill="#14503F" fill-opacity="0.7">x -2048</text>
+  <text x="320" y="48" text-anchor="middle" font-size="11" fill="#14503F" fill-opacity="0.7">x 0</text>
+  <text x="500" y="48" text-anchor="middle" font-size="11" fill="#14503F" fill-opacity="0.7">x 2048</text>
+  <text x="132" y="64" text-anchor="end" font-size="11" fill="#14503F" fill-opacity="0.7">z -2048</text>
+  <text x="132" y="244" text-anchor="end" font-size="11" fill="#14503F" fill-opacity="0.7">z 0</text>
+  <text x="132" y="424" text-anchor="end" font-size="11" fill="#14503F" fill-opacity="0.7">z 2048</text>
+
+  <text x="230" y="136" text-anchor="middle" font-size="17" font-weight="700" fill="#14503F">Region 0</text>
+  <text x="230" y="158" text-anchor="middle" font-size="11" fill="#14503F" fill-opacity="0.75">x -2048 to 0</text>
+  <text x="230" y="174" text-anchor="middle" font-size="11" fill="#14503F" fill-opacity="0.75">z -2048 to 0</text>
+  <text x="230" y="196" text-anchor="middle" font-size="10.5" fill="#14503F" fill-opacity="0.55">world-r0</text>
+
+  <text x="410" y="136" text-anchor="middle" font-size="17" font-weight="700" fill="#14503F">Region 1</text>
+  <text x="410" y="158" text-anchor="middle" font-size="11" fill="#14503F" fill-opacity="0.75">x 0 to 2048</text>
+  <text x="410" y="174" text-anchor="middle" font-size="11" fill="#14503F" fill-opacity="0.75">z -2048 to 0</text>
+  <text x="410" y="196" text-anchor="middle" font-size="10.5" fill="#14503F" fill-opacity="0.55">world-r1</text>
+
+  <text x="230" y="316" text-anchor="middle" font-size="17" font-weight="700" fill="#14503F">Region 2</text>
+  <text x="230" y="338" text-anchor="middle" font-size="11" fill="#14503F" fill-opacity="0.75">x -2048 to 0</text>
+  <text x="230" y="354" text-anchor="middle" font-size="11" fill="#14503F" fill-opacity="0.75">z 0 to 2048</text>
+  <text x="230" y="376" text-anchor="middle" font-size="10.5" fill="#14503F" fill-opacity="0.55">world-r2</text>
+
+  <text x="410" y="316" text-anchor="middle" font-size="17" font-weight="700" fill="#14503F">Region 3</text>
+  <text x="410" y="338" text-anchor="middle" font-size="11" fill="#14503F" fill-opacity="0.75">x 0 to 2048</text>
+  <text x="410" y="354" text-anchor="middle" font-size="11" fill="#14503F" fill-opacity="0.75">z 0 to 2048</text>
+  <text x="410" y="376" text-anchor="middle" font-size="10.5" fill="#14503F" fill-opacity="0.55">world-r3</text>
+
+  <line x1="320" y1="240" x2="372" y2="278" stroke="#1E6F5C" stroke-width="1.5" stroke-dasharray="3 3" />
+
+  <circle cx="320" cy="240" r="5" fill="#1E6F5C" />
+
+  <text x="378" y="282" font-size="11" font-weight="600" fill="#14503F">world spawn 0,0 is in region 3</text>
+
+  <text x="320" y="446" text-anchor="middle" font-size="13" font-weight="600" fill="#14503F">south (+z)</text>
+  <text x="320" y="470" text-anchor="middle" font-size="11" fill="#14503F" fill-opacity="0.65">4 squares of 2048 x 2048 blocks, covering 4096 x 4096 in total</text>
+</svg>

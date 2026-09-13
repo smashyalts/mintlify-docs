@@ -1,0 +1,30 @@
+<svg font-family="system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" xmlns="http://www.w3.org/2000/svg" width="600" height="250" viewBox="0 0 600 250" role="img" aria-label="Cross-section of one border showing a 64 block ghost band on each side, with a player walking towards the line">
+  <text x="310" y="26" text-anchor="middle" font-size="12" font-weight="600" fill="#E8EFEC">ghost band - 64 blocks either side</text>
+
+  <rect x="40" y="70" width="270" height="100" fill="#1E6F5C" fill-opacity="0.09" />
+
+  <rect x="310" y="70" width="260" height="100" fill="#1E6F5C" fill-opacity="0.09" />
+
+  <rect x="246" y="70" width="64" height="100" fill="#1E6F5C" fill-opacity="0.3" />
+
+  <rect x="310" y="70" width="64" height="100" fill="#1E6F5C" fill-opacity="0.3" />
+
+  <rect x="40" y="70" width="530" height="100" fill="none" stroke="#1E6F5C" stroke-opacity="0.8" stroke-width="1.5" />
+
+  <line x1="310" y1="46" x2="310" y2="196" stroke="#1E6F5C" stroke-width="2.5" />
+
+  <text x="143" y="106" text-anchor="middle" font-size="14" font-weight="700" fill="#E8EFEC">Region 0</text>
+  <text x="143" y="126" text-anchor="middle" font-size="11" fill="#E8EFEC" fill-opacity="0.7">server A owns these blocks</text>
+  <text x="472" y="106" text-anchor="middle" font-size="14" font-weight="700" fill="#E8EFEC">Region 1</text>
+  <text x="472" y="126" text-anchor="middle" font-size="11" fill="#E8EFEC" fill-opacity="0.7">server B owns these blocks</text>
+
+  <circle cx="268" cy="148" r="6" fill="#1E6F5C" />
+
+  <line x1="278" y1="148" x2="300" y2="148" stroke="#1E6F5C" stroke-width="2" />
+
+  <polygon points="308,148 298,143 298,153" fill="#1E6F5C" />
+
+  <text x="268" y="190" text-anchor="middle" font-size="11" font-weight="600" fill="#E8EFEC">you</text>
+  <text x="310" y="218" text-anchor="middle" font-size="11.5" fill="#E8EFEC" fill-opacity="0.8">inside the shaded strip you see, hit and talk to the other side</text>
+  <text x="310" y="238" text-anchor="middle" font-size="11.5" fill="#E8EFEC" fill-opacity="0.8">the moment you cross the line, server B takes over</text>
+</svg>
