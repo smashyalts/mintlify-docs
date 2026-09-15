@@ -44,8 +44,14 @@ icon: "triangle-exclamation"
 ## Operational
 
 <AccordionGroup>
-  <Accordion title="Pinned to one server build">
-    The plugin compiles against the Mojang-mapped server for the things Bukkit does not expose. A different Paper build family fails at startup rather than degrading.
+  <Accordion title="Paper or a fork of it, and one Minecraft version">
+    Two separate constraints, often confused.
+
+    **Paper, or anything downstream of it.** Purpur, Pufferfish, Leaf, Gale and the like all work, because they inherit Paper's API and internals. Spigot and CraftBukkit do not: the plugin uses Paper's Brigadier commands, its configuration-phase connection event, its Netty channel listener, and its rewritten chunk system. **Folia does not work either** — the plugin uses the Bukkit scheduler and assumes one main thread throughout.
+
+    **One Minecraft version.** Roughly two dozen `net.minecraft` classes are used directly, and those are renamed and reshaped between versions, so a 26.2 build does not run on 26.3. This is the constraint that bites.
+
+    A different *build* of the same version is not a problem, and the build pinned in `gradle.properties` is pinned so the build is reproducible, not because the plugin refuses others. The one caveat: the chunk system classes are server internals with no compatibility promise, so a build that reorganises them could break it — which is exactly why the pin exists for building.
   </Accordion>
   <Accordion title="One Redis per network">
     Keys are under a common prefix but are not namespaced per network. Two networks on one Redis overwrite each other's routing, and the symptom is misrouted players rather than an error. Use separate instances or separate database numbers.

@@ -24,18 +24,20 @@ The hub is not strictly required — without one a drain logs an error and leave
 
 ## Versions
 
-Atlas compiles against the Mojang-mapped server, so it runs on the Paper build family it was built for and not on others. The pinned versions live in `gradle.properties`.
+Atlas reaches into the server for things Bukkit does not expose, which fixes two things: it needs **Paper or a fork of it**, and it is built against **one Minecraft version**.
+
+Paper forks are fine — Purpur, Pufferfish, Leaf, Gale and anything else downstream inherit what it uses. Spigot and CraftBukkit are not, and neither is Folia, which has a different threading model entirely. What it will not survive is a different *Minecraft* version; a different Paper build of the same version is fine. The versions pinned in `gradle.properties` are pinned so the build is reproducible.
 
 | Component | Version |
 | --- | --- |
-| Paper | 26.2, pinned to a specific build |
+| Paper | 26.2, or any fork of it at 26.2 |
 | Velocity | 4.0.0 |
 | Java | 25 |
 | MongoDB | any, standalone is fine |
 | Redis | any recent |
 
 <Warning>
-Check the Java and Paper versions your host actually offers before committing. A mismatch is a startup crash, not a degradation, and on shared hosting you often cannot pick the exact build.
+Check the Java and Minecraft versions your host actually offers before committing. A Minecraft version mismatch is a startup crash, not a degradation, and on shared hosting you often cannot pick. Which Paper fork it is does not matter.
 </Warning>
 
 ## MongoDB: a standalone is fine
