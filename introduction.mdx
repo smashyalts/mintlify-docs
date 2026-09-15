@@ -37,8 +37,8 @@ Atlas is honest about this, because the trade-offs are what decide whether it fi
   <Accordion title="Every shard needs its own copy of the same world">
     Chunk decoration is not a pure function of the seed, so servers generating "the same" world disagree about where the trees are. The world is generated once and copied, which means the disk cost multiplies by the number of shards.
   </Accordion>
-  <Accordion title="It is pinned to one server build">
-    The plugin compiles against the Mojang-mapped server for the handful of things Bukkit does not expose: rewriting an entity id, neutralising the login teleport, reading outgoing block updates, the advancement file. A different Paper build family will not run it.
+  <Accordion title="It needs Paper, and one Minecraft version">
+    The plugin reaches into the server for the handful of things Bukkit does not expose: rewriting an entity id, neutralising the login teleport, reading outgoing block updates, the advancement file. That costs two constraints. It needs **Paper or a fork of it** — Purpur, Pufferfish and the rest are fine, Spigot and CraftBukkit are not — and it is compiled against **one Minecraft version**, because the internal classes it uses are renamed between versions. A different build of the same version is fine.
   </Accordion>
   <Accordion title="Interactions do not cross a border">
     Breaking, placing and hitting are forwarded to the region's owner and work. Containers, doors and anything with a screen stay refused, because a live inventory session against a block on another server is how you get duplicated items.
