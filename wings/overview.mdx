@@ -45,6 +45,22 @@ Each server boots its own Linux guest kernel, with its own page cache, futexes a
   That is a far smaller attack surface than the host kernel's syscall table, and it is still not zero. Keep the host kernel, KVM and Kata patched.
 </Warning>
 
+## Coverage
+
+| Attack | Stopped | Reason |
+| --- | --- | --- |
+| Host kernel exploits from inside a server (Copy Fail, GhostLock, futex, io_uring and netfilter bugs) | yes | They hit the guest kernel, which only runs that one server. |
+| Page cache corruption | yes | Each VM has its own page cache in its own memory, so corrupted pages never reach the host or another server. |
+| runc escapes such as CVE-2019-5736 and CVE-2024-21626 | yes | Server containers are not started by runc on the host. Kata sets them up inside the guest. |
+| Bugs in KVM, Cloud Hypervisor, virtiofsd or the Kata shim | no | These are the remaining way out. Patch them. |
+| CPU side channels (Spectre, MDS, L1TF) | no | Needs host mitigations; disable SMT or pin cores on nodes shared by untrusted customers. |
+| Host paths allowed through `allowed_mounts` | no | A mounted host path, `docker.sock` above all, is shared into the VM as it is. |
+| Server to server traffic | no | VMs sit on the same Docker network as before. Wings' firewall rules still apply. |
+
+<Warning>
+  Keep virtio-fs DAX off (`virtio_fs_cache_size = 0`, the Kata default the install script keeps). DAX maps host page cache pages into the guest and gives up the page cache isolation above.
+</Warning>
+
 ## Changes in wings
 
 Wings keeps its Docker executor. A server is still a Docker container built from the egg's image. The fork chooses the OCI runtime that starts it, and changes what wings does around a VM:

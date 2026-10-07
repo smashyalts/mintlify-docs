@@ -72,6 +72,7 @@ The install script copies Kata's Cloud Hypervisor config to `/etc/kata-container
 | `enable_annotations` | kernel params, vCPUs, memory and more | `[]` | No container annotation can change the VM's kernel command line or size. |
 | `default_memory` | `2048` | `256` | Memory for the guest kernel and Kata agent, on top of the server's own limit. |
 | `reclaim_guest_freed_memory` | `false` | `true` | Memory the guest frees goes back to the host. |
+| `virtio_fs_cache_size` | `0` | `0` | Pinned so virtio-fs DAX stays off. DAX would map host page cache into the guest. |
 
 `debug_console_enabled = false` and `sandbox_cgroup_only = true` are Kata's defaults and are kept. Edit the file and restart Docker to change anything else; new values apply to VMs started afterwards.
 
