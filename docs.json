@@ -57,7 +57,8 @@
             "group": "MicroVM wings",
             "icon": "cube",
             "pages": [
-              "wings/overview"
+              "wings/overview",
+              "wings/installation"
             ]
           },
           {
