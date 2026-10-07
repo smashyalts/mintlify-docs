@@ -45,7 +45,9 @@ icon: "circle-question"
 
 <AccordionGroup>
   <Accordion title="Terrain does not line up at a border">
-    The shards do not have the same world. Chunk decoration is not a pure function of the seed, so generating separately from the same seed is not enough. Generate once and copy.
+    The two sides are not sharing their border. Check, in order: `tuning.border-chunks` is on for **both** shards; both use the same `level-seed`; and `/shard mirror` on the shard showing the wrong terrain. `not yet upstream` means the owner has never generated that stretch — run `/shard pregen` there. `too late` means the chunk was already in memory when it arrived and will be picked up on a later visit. `REFUSED FROM NEWER BUILD` means the shards run different server builds.
+
+    If you copied one world folder to every shard instead, the copies have drifted: they must come from the same pre-generated folder.
   </Accordion>
   <Accordion title="Blocks broken near a border do not appear on the other side">
     Check `/shard mirror`. It counts what was sent, what was applied, and where deltas were dropped: out of band, in unloaded chunks, or unparseable. A rising `dropped bad data` means the two sides are on different server versions.

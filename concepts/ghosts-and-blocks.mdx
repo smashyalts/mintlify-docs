@@ -35,11 +35,17 @@ A border can have a lot standing on it, and a naive implementation is an amplifi
   </Card>
 </CardGroup>
 
+The main thread only reads: positions, poses, and a copy of any equipment that changed. Building the JSON, encoding items and publishing happen on a separate thread, in order, so a busy border costs the tick almost nothing beyond the reads.
+
 ## Block mirroring
 
 Any block change within the band is noted, its final state read two ticks later so a chain of changes costs one message, and then sent two ways.
 
 The first is a delta to each neighbour whose rectangle is inside the band, applied with physics off and only in loaded chunks. The second is an upsert into a journal collection keyed by position. The journal is the catch-up path: when a chunk in the band loads on the neighbour, it replays the journal for that chunk. Without it, a neighbour that had been restarted would show freshly generated terrain where the owner has a hole.
+
+Only reading the blocks happens on the main thread. Deltas are encoded and sent in order from their own thread, and journal writes are coalesced: whatever piled up while the last write was out goes in the next one, keeping only the latest state of each position.
+
+Past the band, out to the view distance, the neighbour shows the owner's ground as of its last publish when [border chunks](/concepts/border-chunks) are on.
 
 Changes that fire no Bukkit event, such as `/fill`, `/setblock` or a plugin writing blocks directly, are caught by reading the block updates the server sends to clients. That covers every source of change with one hook instead of an ever-growing list of events.
 
@@ -53,7 +59,12 @@ It also turns a plugin's cross-region teleport into a proper transfer, which is 
 
 Breaking, placing and hitting across a border do work. The shard the player is standing on cannot make the change and the shard that owns the block cannot see the player, so the edit is forwarded and each side does the half it is authoritative for. The owner reads the block, decides what it drops and applies the change; the player's own shard spends the item, damages the tool and hands over the drops.
 
-It fails closed. Nothing is consumed if the owner did not confirm.
+Protection gets a say on both sides:
+
+- **On the player's shard**, the edit is forwarded only after every other plugin has handled the `BlockBreakEvent` or `BlockPlaceEvent`. If anything cancels it, nothing is sent.
+- **On the owning shard**, there is no player object to raise those events for, so Atlas raises [`ShardRemoteEditEvent`](/api/events#shardremoteeditevent) instead. Cancelling it refuses the edit and the player is told why. A claims plugin has to listen for it to protect land from across a border.
+
+It never errs towards a duplicate. A break hands over drops only when the owner confirms it. A place is refunded only when the owner explicitly refuses; if the owner does not answer, the item is not refunded, because the block may well be standing over there. And an item carrying data of its own — a filled shulker box, a named or written block — does not place across a border at all, since only the block's state is forwarded and it would arrive empty.
 
 <Warning>
 Interactions are refused on purpose. A container or a screen is a live session against a block on a server this one cannot hold a reference to, and half-implementing that is how you get duplicated items. Players get an action bar line saying so rather than silence.

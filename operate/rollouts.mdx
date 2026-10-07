@@ -56,6 +56,12 @@ Moving a player somewhere they did not walk is a different act from carrying the
   </Step>
 </Steps>
 
+## Upgrading the server build
+
+Upgrade every shard to the same Paper build, as close together as you can.
+
+With [border chunks](/concepts/border-chunks) on, a shard publishes its corridor chunks stamped with its build's data version. A shard still on an older build refuses those chunks and logs `REFUSED FROM NEWER BUILD` rather than loading them, because Paper terminates on a chunk from a newer version. Nothing breaks, but the border shows that shard's own terrain until it is upgraded too.
+
 ## What an unclean stop costs
 
 Killing the process skips the withdraw and the final saves. The region keeps a topology row until it goes stale, which is three heartbeats, and players keep their leases until those expire. Everything recovers on its own; it just takes the TTL rather than being instant, and anything since the last autosave is lost.

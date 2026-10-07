@@ -16,19 +16,19 @@ icon: "triangle-exclamation"
   <Accordion title="Player ghosts are mannequins">
     They are not player entities. They do not appear in the tab list and plugins cannot treat them as players.
   </Accordion>
-  <Accordion title="Chunks past the ghost band still generate">
-    Under the player's view distance. Nothing spawns or changes there and nothing is mirrored, so they are scenery that will not match the owner's edits.
+  <Accordion title="Chunks past the ghost band are a snapshot">
+    Under the player's view distance, past the ghost band, nothing is mirrored live. With [border chunks](/concepts/border-chunks) on, the neighbour shows the owner's ground as of its last publish; without them, it shows its own generated terrain. Either way it is scenery that will not track edits in real time.
   </Accordion>
-  <Accordion title="A protection plugin on the owning shard never sees a forwarded edit">
-    There is no player object there to check. A mesh-wide claims system has to hook the Atlas API rather than the Bukkit event.
+  <Accordion title="A protection plugin on the owning shard sees a forwarded edit only through the Atlas event">
+    There is no player object there to raise `BlockBreakEvent` or `BlockPlaceEvent` for. Atlas raises `ShardRemoteEditEvent` instead, so a claims plugin protects land from across a border only if it, or a small bridge plugin, listens for that. Protection on the player's own shard already applies: edits are forwarded only after it has had its say.
   </Accordion>
 </AccordionGroup>
 
 ## Correctness edges
 
 <AccordionGroup>
-  <Accordion title="A duplicate entity is possible after every acknowledgement is lost">
-    An entity crossing is retried three times against a dedup key on the target. If the target spawned it and every acknowledgement was lost, the source restores its own copy and logs a warning naming the uid. That is the one path that can leave two of something.
+  <Accordion title="An entity can be lost, but not doubled, when a crossing goes wrong">
+    An entity crossing is retried three times against a dedup key on the target. If no acknowledgement ever arrives, the source tries to take that same key for itself: if it wins, the target never spawned the entity and never will, and the source restores its copy; if it loses, the target has it, and the source drops its own. The remaining edge is a target that took the key and then failed to spawn the entity at the moment the source gave up — that entity is lost rather than duplicated.
   </Accordion>
   <Accordion title="Kicks are the recovery of last resort">
     A stale lease, a handoff that cannot be reverted, or a lost lease renewal kicks the player asking them to reconnect. Reconnecting lands them on the correct shard with the correct state. It is ugly and it is always correct.

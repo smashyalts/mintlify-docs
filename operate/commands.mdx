@@ -13,7 +13,8 @@ Requires `atlas.shard.admin`.
 | `/shard` or `/shard info` | This shard's id, server name, region bounds, grid, tuning, Redis connectivity and known remote geos. For a player, their region and distance to the nearest edge. |
 | `/shard topology` | A map of the grid showing which server serves each region, and which are unserved. |
 | `/shard ghosts` | How many ghosts are mirrored here right now. |
-| `/shard mirror` | Block mirror counters: sent, applied, and where deltas were dropped. |
+| `/shard mirror` | Block mirror counters: sent, applied, and where deltas were dropped. With [border chunks](/concepts/border-chunks) on, also what was published, adopted, not yet upstream, too late, or refused. |
+| `/shard pregen` | Print the [Chunky](https://modrinth.com/plugin/chunky) commands that pre-generate exactly this shard's region and nothing else. |
 | `/shard save` | Force an immediate fenced save of every online player. |
 | `/shard drain [reason]` | Move everyone to the hub so this shard can be replaced. Runs from the console. |
 | `/shard time <value>` | Set the time on every shard of this world at once. Accepts ticks or `day`, `noon`, `night`, `midnight`. |

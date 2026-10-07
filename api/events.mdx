@@ -59,6 +59,25 @@ public void onRemoteKill(ShardRemoteKillEvent e) {
 
 The vanilla kill statistic is already incremented before it fires. Not cancellable: by then the victim is dead on another server and there is nothing left to prevent.
 
+## ShardRemoteEditEvent
+
+A player on a neighbouring shard is breaking, placing or hitting something on this shard's ground, across the border. Fired on the shard that owns it, on the main thread, before anything changes. Cancellable.
+
+The player is not on this server, so no `BlockBreakEvent`, `BlockPlaceEvent` or `EntityDamageByEntityEvent` can be raised for them here. This is the event a claims or region plugin listens to instead.
+
+```java
+@EventHandler
+public void onRemoteEdit(ShardRemoteEditEvent e) {
+    Block b = e.block();                // null for a hit
+    if (b != null && !claims.canBuild(e.actor(), b.getLocation())) {
+        e.setCancelled(true);
+        e.setReason("That land is claimed.");
+    }
+}
+```
+
+`action()` is `BREAK`, `PLACE` or `HIT`. `actor()` and `actorName()` identify the player across the border; `placed()` is the block data for a place, and `target()` the entity for a hit. The reason is shown to the player when the edit is refused.
+
 ## ShardReadyEvent
 
 This server has joined the mesh, announced its region, and is about to accept players. Register scheduler tasks, queries and subscriptions before or during it.

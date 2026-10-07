@@ -23,7 +23,7 @@ Every message is one JSON object on a Redis pub/sub channel.
 `from` is a shard id for shards and `proxy:<geo>:<name>` for proxies. A reply reuses the request's sender as its addressee and carries `replyTo`; replies are matched before channel handlers run, so a subscriber never sees somebody else's acknowledgement.
 
 <Note>
-Delivery is at-most-once, deliberately. Nothing that matters depends on a message arriving: the handoff is committed in MongoDB before the offer is sent, the block journal survives a lost delta, and the entity dedup key makes a redelivery harmless. A message is a hint to go look at durable state, never the state itself.
+Delivery is at-most-once, deliberately. Nothing that matters depends on a message arriving: the handoff is committed in MongoDB before the offer is sent, the block journal survives a lost delta, and the entity dedup key makes a redelivery harmless — and decides who keeps an entity whose acknowledgement never arrived. A message is a hint to go look at durable state, never the state itself.
 </Note>
 
 ## Message types
@@ -75,6 +75,7 @@ Everything is under `shard:`, so a shared Redis can host other tenants — but n
 | `shards` | `geo:world:region` | Server name, addresses, player count, last seen |
 | `public_hosts` | geo | The address clients use for that geo |
 | `block_journal` | `world:x:y:z` | Latest block state in a ghost band, for chunk replay |
+| `border_chunks` | `world:cx:cz` | A corridor chunk as region-file NBT, with its DataVersion, for [border chunks](/concepts/border-chunks) |
 | `audit_log` | ObjectId | The append-only change log |
 | `<plugin>_<name>` | plugin's choice | Whatever a plugin puts there |
 
@@ -96,3 +97,6 @@ Writes are majority-acknowledged. Reads default to the nearest member, except th
 | Entity crossing retries | 3 |
 | Audit flush | 2 s |
 | Audit rollback pacing | 200 blocks per tick |
+| Border chunk publishing | 4 per tick on load, at once on unload |
+| Border chunk prefetch | every second, one query per pass |
+| Border chunk retry when not upstream | 30 s |

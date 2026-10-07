@@ -72,3 +72,6 @@ This is off by default. Its first deployment made every crossing fail, and a bor
 | Target already claimed them | Nothing to revert. This connection is stale, so it is kicked and the reconnect lands on the right shard. |
 | Proxy never switches them | The same revert, unless the handoff is already committed, in which case they are kicked to reconnect. |
 | The database write never returns | After four timeouts the transfer is given up on and the player is kicked, because we cannot know whether the write landed. |
+| The database write fails with an error | The record is read back. If the handoff landed, the crossing continues; if it is untouched, the player is pushed back inside; if it cannot be read, they are kicked to reconnect wherever the record says. An error is never taken as proof that nothing happened. |
+| The revert itself fails | The player is kicked rather than left playing on a server that may no longer own them. |
+| The player was riding something | The vehicle and passengers travel in the snapshot, so on this side they are made non-persistent from the moment the handoff starts, removed once the target owns the record, and made persistent again if it does not. A crash mid-crossing cannot leave a chest boat on both sides. |

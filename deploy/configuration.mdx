@@ -37,6 +37,7 @@ SHARD_GRID_REGION_SIZE: 2048
 | `shard.address` | `SHARD_ADDRESS` | unset | Where the proxy dials this server. Set it and the shard registers itself. |
 | `proxy.name` | `SHARD_PROXY_NAME` | hostname | This proxy's name, if you run more than one. |
 | `proxy.hub` | `SHARD_HUB_PREFIX` | `hub-` | The hub's server name. Matches `hub` too. |
+| `shard.wan-address` | `SHARD_WAN_ADDRESS` | unset | This shard's `host:port` as seen from another geo. Cross-geo only. |
 
 <Warning>
 The shard refuses to start if `shard.world` names a world that is not loaded. A shard owning a region of a world it cannot see would accept players and drop them into nothing.
@@ -77,6 +78,7 @@ The defaults are the tested ones. There is no reward for changing them until som
 | `tuning.transfer-timeout-millis` | `SHARD_TRANSFER_TIMEOUT_MILLIS` | `8000` | How long to wait for a handoff to be acknowledged. |
 | `tuning.heartbeat-seconds` | `SHARD_HEARTBEAT_SECONDS` | `5` | Topology heartbeat. A shard is stale after three of these. |
 | `tuning.pre-open` | `SHARD_PREOPEN` | `false` | Open the backend connection before the border. |
+| `tuning.border-chunks` | `SHARD_BORDER_CHUNKS` | `false` | Share the ground along each border through MongoDB, so shards need only the same seed. See [Same seed, no world copy](/concepts/border-chunks). Set it on every shard or none. |
 | `tuning.chunk-send-rate` | `SHARD_CHUNK_SEND_RATE` | unlimited | Chunks a second to an arriving player, or `keep` to leave the server's own setting alone. |
 | `tuning.arrival-trace` | `SHARD_ARRIVAL_TRACE` | `0` | Log this many movement reports after an arrival. Diagnostics only. |
 
@@ -93,13 +95,23 @@ Atlas removes Paper's chunk send rate limit by default. Entities are only sent o
 
 On by default, because a server that was not logging when the grief happened cannot be made to have been logging afterwards.
 
+## Where new players start
+
+Proxy only, and flat keys only — set them in the environment or at the top level of the proxy's `config.yml`.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `SHARD_DEFAULT_WORLD` | `world` | The world a player with no record is placed in. |
+| `SHARD_SPAWN_X` | `0` | Where in it. The region that owns this point gets them. |
+| `SHARD_SPAWN_Z` | `0` | |
+
 ## Cross-geo
 
-Only meaningful with more than one geo.
+Only meaningful with more than one geo. These are flat keys only.
 
 | Variable | Meaning |
 | --- | --- |
-| `SHARD_WAN_ADDRESS` | This shard's `host:port` as seen from another geo. |
+| `SHARD_WAN_ADDRESS` | This shard's `host:port` as seen from another geo. Also `shard.wan-address`. |
 | `SHARD_PUBLIC_HOST_<GEO>` | The public address of that geo's proxy. |
 | `SHARD_REDIS_URI_<GEO>` | That geo's Redis. Without it, cross-geo messages are dropped with a warning. |
 | `SHARD_GEO_HANDOFF_MIN_PING_MILLIS` | Ping above which handing a player to another geo's proxy might be worth a reconnect. Default 120. |

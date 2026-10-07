@@ -1,0 +1,98 @@
+---
+title: "Same seed, no world copy"
+description: "How the ground along a border is shared through MongoDB, so each shard only generates its own region"
+icon: "layer-group"
+---
+
+Every shard runs the **same seed** and generates **only its own region**. The ground either side of each border is the one place two shards must agree, and Atlas shares exactly that through MongoDB. Nobody copies a world folder.
+
+<Warning>
+  This is `tuning.border-chunks`, and it is **off by default** while it is new. Publishing is verified on a running network; the receiving half has not yet been exercised by a real client walking a border. The [full copy](#the-fallback-a-full-copy) still works and is the conservative choice.
+</Warning>
+
+## Why a seed alone is not enough
+
+Chunk decoration is not a pure function of the seed ([PaperMC/Paper#14125](https://github.com/PaperMC/Paper/issues/14125)). Two servers generating "the same" world disagree about where the trees are, and at a border you would see it as a seam where the terrain does not line up.
+
+But the only ground that has to agree is the ground two shards can both show a player: a corridor `view-distance` chunks deep either side of each border. Everything deeper inside a region is only ever seen from that region's own server, and can be generated there and nowhere else.
+
+## How it works
+
+<Steps>
+  <Step title="The owner publishes its side of the border">
+    When a chunk inside the corridor loads on the shard that owns it, Atlas copies it and upserts it into the `border_chunks` collection, as the same NBT a region file holds. It publishes again when the chunk unloads if it changed, and a chunk that unloaded before its turn is loaded back for the copy, so a pre-generator racing along the border does not leave gaps.
+  </Step>
+  <Step title="The neighbour adopts it before it needs it">
+    As a player approaches a border, the neighbour looks a ring of chunks ahead of them, fetches any of the owner's corridor chunks it does not have in one query, and writes them into its own region storage. From then on it is simply a chunk that came off disk.
+  </Step>
+  <Step title="The game does the rest">
+    Loading an adopted chunk is the server's ordinary load path, with its own DataFixers, lighting and block entities. Nothing about rendering, the ghost band or the block mirror knows the chunk came from somewhere else.
+  </Step>
+</Steps>
+
+Only the copy is taken on the main thread. Encoding, compression, the database round trip and adopting all happen elsewhere.
+
+### What it refuses
+
+| Situation | What happens |
+| --- | --- |
+| The neighbour is already holding that chunk, at any status | Left alone. A write under a chunk in memory is overwritten by the copy in memory. It is tried again later. |
+| The chunk was written by a newer server build | Refused, with a warning naming it. Paper terminates the process when it loads a chunk from a newer version, so the shard that is behind must be upgraded. |
+| The owner has not generated it yet | Nothing to adopt. Asked again in 30 seconds. |
+
+`/shard mirror` shows the counters: published, adopted, not yet upstream, too late, and anything refused.
+
+## Setting it up
+
+<Steps>
+  <Step title="The same seed everywhere">
+    Every shard uses the same `level-seed` and the same `level-name`. Nothing is copied between servers.
+  </Step>
+  <Step title="Turn it on, on every shard">
+    ```yaml plugins/atlas/config.yml
+    tuning:
+      border-chunks: true
+    ```
+  </Step>
+  <Step title="Pre-generate each region on its own shard">
+    Run `/shard pregen` on each shard. It prints the [Chunky](https://modrinth.com/plugin/chunky) commands that generate exactly that shard's square and nothing else:
+
+    ```
+    /chunky world world
+    /chunky shape rectangle
+    /chunky corners -2048 -1024 -1 1023
+    /chunky start
+    ```
+
+    Each shard publishes its corridor as it generates. No fork of Chunky is needed: a region is a rectangle, which is what `chunky corners` selects.
+  </Step>
+</Steps>
+
+<Tip>
+  Already holding a full copy from before? `/chunky trim` removes everything outside the square you own.
+</Tip>
+
+## What it costs
+
+Per shard, disk is your own region plus a thin corridor of the neighbours', instead of the whole map.
+
+| Radius | Grid | Full copy, per shard | Own region + corridor, per shard |
+| --- | --- | --- | --- |
+| 10,000 | 2x2 | 9 GB | about 2.3 GB |
+| 25,000 | 2x2 | 56 GB | about 14 GB |
+| 50,000 | 2x2 | 224 GB | about 56 GB |
+| 50,000 | 4x4 | 224 GB | about 15 GB |
+
+MongoDB holds each corridor chunk once: about 0.4 GB at a 10,000 radius and 2 GB at 50,000 on a 2x2. Measured at about 8 KB per chunk compressed.
+
+More regions now does divide the world up: a 4x4 splits the same map sixteen ways instead of copying it sixteen times.
+
+## What it does not change
+
+- **The first visit pays for generation.** A corridor chunk is generated once, by its owner. Pre-generate if you do not want players to be the ones who trigger it.
+- **Ground past the ghost band is a snapshot.** Builds within `ghost-width` of a border are mirrored live. Between that and the view distance, the neighbour shows the owner's chunk as of its last publish, which is newer than freshly generated terrain but not live.
+- **Every shard must run the same server build.** A chunk from a newer build is refused rather than loaded.
+
+## The fallback: a full copy
+
+Generate the world once, pre-generate it out to the edge of the grid, stop the server, and copy the folder to every shard. Leave `border-chunks` off. Every shard holds the whole map, so disk is world size times shard count, but nothing about it is new.

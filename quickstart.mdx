@@ -55,24 +55,20 @@ Three things work differently to a VPS, and all three cause the same confused ho
 
 <Steps>
 
-<Step title="Generate the world once, then copy it to every server">
-This is the step with no error message, and the one that looks like a bug in Atlas when you skip it.
-
-Chunk decoration is not a pure function of the seed ([PaperMC/Paper#14125](https://github.com/PaperMC/Paper/issues/14125)). Two servers generating "the same" world from the same seed disagree about where the trees are, and you see it at the border as a seam where terrain does not line up.
-
-So generate **once**, locally or on one of the servers: boot Paper, pre-generate out to the edge of the grid (4096 by 2048 blocks for this layout), stop it, then upload that one `world` folder to both shards and the hub over SFTP.
+<Step title="Give both shards the same seed">
+Nothing is copied between servers. Each shard runs the **same seed** and generates only its own region; the ground either side of the border is shared through MongoDB, which is what keeps the border from showing a seam. How that works is in [Same seed, no world copy](/concepts/border-chunks).
 
 ```properties server.properties
 level-name=world
-level-seed=pick-anything
+level-seed=pick-anything-but-the-same-everywhere
 online-mode=false
 spawn-protection=0
 allow-nether=false
 ```
 
-Every shard uses the same `level-name`, and it must match `shard.world` below. Leave `server-port` to the panel.
+Every shard uses the same `level-seed` and the same `level-name`, and `level-name` must match `shard.world` below. Leave `server-port` to the panel.
 
-After the copy each shard keeps its own copy, and what players build in region 0 lives only on region 0's server. That is the point, and it is also why disk cost multiplies by the number of shards — see [sizing](#sizing-the-world-for-a-real-smp).
+What players build in region 0 lives only on region 0's server. That is the point.
 </Step>
 
 <Step title="Start the proxy once to get a forwarding secret">
@@ -138,6 +134,8 @@ grid:
   region-size: 2048
   regions-x: 2
   regions-z: 1
+tuning:
+  border-chunks: true
 ```
 
 ```yaml r1 plugins/atlas/config.yml
@@ -155,11 +153,13 @@ grid:
   region-size: 2048
   regions-x: 2
   regions-z: 1
+tuning:
+  border-chunks: true
 ```
 
 </CodeGroup>
 
-`address` is that server's own allocation — the one the proxy dials — and setting it is the whole of self-registration.
+`address` is that server's own allocation — the one the proxy dials — and setting it is the whole of self-registration. `border-chunks` is what shares the ground along the border; it is off unless you turn it on.
 
 Then on both shards **and the hub**:
 
@@ -177,7 +177,7 @@ proxies:
 </Step>
 
 <Step title="Set up the hub">
-The hub is a plain Paper server. It gets the world copy and the same `paper-global.yml` forwarding block, and **no Atlas plugin** — it owns no region, so there is nothing for the plugin to do there.
+The hub is a plain Paper server with the same `paper-global.yml` forwarding block and **no Atlas plugin** — it owns no region, so there is nothing for the plugin to do there. It needs no copy of the shards' world; any world will do.
 
 Name it `hub` and the proxy finds it. If you call it something else, set `proxy.hub` to match.
 </Step>
@@ -192,6 +192,19 @@ Watch each shard's console for the region it claims. A misspelled setting is nam
 ```
 config.yml has 1 setting(s) this version does not know: [shard.wrold]
 ```
+</Step>
+
+<Step title="Pre-generate each region on its own shard">
+Install [Chunky](https://modrinth.com/plugin/chunky) on each shard and run `/shard pregen` there. It prints the commands that generate exactly that shard's square:
+
+```
+/chunky world world
+/chunky shape rectangle
+/chunky corners -2048 -1024 -1 1023
+/chunky start
+```
+
+Each shard publishes its side of the border as it goes. You can skip this and let players generate as they explore, but then the first person to walk a stretch of border is the one who pays for generating it.
 </Step>
 
 <Step title="Check it worked">
@@ -232,7 +245,7 @@ grid:
   regions-z: 2     # was 1
 ```
 
-Set the new servers to `region: 2` and `region: 3`, give each its `address`, and copy the same world folder to them. Region numbering is left to right then top to bottom from the north-west corner, so the layout becomes:
+Set the new servers to `region: 2` and `region: 3`, give each its `address`, the same seed and `border-chunks: true`, then run `/shard pregen` on each — including the two you already had, because their squares just changed. Region numbering is left to right then top to bottom from the north-west corner, so the layout becomes:
 
 | Region | Covers x | Covers z |
 | --- | --- | --- |
@@ -258,24 +271,19 @@ radius      = (regions-x x region-size) / 2
 
 `region-size` must be at least 256 and a multiple of 16. There is no upper limit in Atlas.
 
-| Radius you want | Grid | `region-size` | Chunks to generate | World copy, **per shard** |
+| Radius you want | Grid | `region-size` | Chunks to generate, **per shard** | Disk, **per shard** |
 | --- | --- | --- | --- | --- |
-| 2,048 | 2x2 | 2048 | 65,536 | under 1 GB |
-| 5,000 | 2x2 | 4992 | 389,376 | 2-3 GB |
-| 10,000 | 2x2 | 10000 | 1,562,500 | 6-12 GB |
-| 25,000 | 2x2 | 24992 | 9,759,376 | 38-75 GB |
-| 50,000 | 2x2 | 50000 | 39,062,500 | 150-300 GB |
+| 2,048 | 2x2 | 2048 | 16,384 | well under 1 GB |
+| 5,000 | 2x2 | 4992 | 97,344 | under 1 GB |
+| 10,000 | 2x2 | 10000 | 390,625 | about 2.3 GB |
+| 25,000 | 2x2 | 24992 | 2,439,844 | about 14 GB |
+| 50,000 | 2x2 | 50000 | 9,765,625 | about 56 GB |
+| 50,000 | 4x4 | 24992 | 2,439,844 | about 15 GB |
 
-<Warning>
-  **The copy is the constraint, not the grid.** Every shard holds a full copy of the whole world, so disk is world size times shard count — and more shards does not divide the world up, it multiplies it. A 50,000 radius world at 4 shards is somewhere north of half a terabyte of panel storage, plus pre-generating 39 million chunks once and uploading the result four times.
-</Warning>
-
-Splitting into more regions does not help this: 4x4 at the same radius is the same 39 million chunks, copied sixteen times instead of four. What more regions buys is simulation headroom — more players and more redstone spread over more CPUs — not less disk.
-
-So size the world to what you will actually copy. A 5,000 to 10,000 radius is a large survival map, pre-generates in hours rather than days, and fits comfortably on rented storage. Push past that and the pre-generate-and-copy step becomes the whole project.
+With [border chunks](/concepts/border-chunks) each shard generates and stores only its own square plus a thin corridor of its neighbours', so more regions divides the world up: a 4x4 is the same map in sixteen pieces, each pre-generated in parallel on its own server. More regions also buys simulation headroom — more players and more redstone over more CPUs.
 
 <Note>
-  Atlas requires the copy because two servers generating the same seed disagree about decoration, and the seam shows at the border. If you are planning something much larger than the table above, ask before you buy the storage: what has to be identical is the ground where two shards can both show you the same place, which is a corridor along each border rather than the whole map — but Atlas does not currently do anything to help you generate only that, and the tested path is the full copy.
+  If you leave `border-chunks` off and copy one world folder to every shard instead, every shard holds the whole map: about 224 GB each at a 50,000 radius, and more shards multiplies it rather than dividing it. That path still works and is the conservative one while border chunks are new.
 </Note>
 
 ## When it does not work
@@ -285,7 +293,7 @@ So size the world to what you will actually copy. A 5,000 to 10,000 radius is a 
 | Kicked when joining any shard | Forwarding secret missing or different on that shard |
 | `/shard topology` shows a dash | That shard is not running, or its `address` is not what the proxy can dial |
 | Players routed to the wrong server | The grid block differs somewhere, or two networks share one Redis |
-| A visible seam at the border | The world was generated per shard instead of copied once |
+| A visible seam at the border | `border-chunks` is off on a shard, the seeds differ, or the owner has not generated that stretch yet — see `/shard mirror` |
 | The proxy will not start | `[forced-hosts]` still names a server that does not exist |
 | A panel variable you set does nothing | `config.yml` exists and wins over the environment |
 
