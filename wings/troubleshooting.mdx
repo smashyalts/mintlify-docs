@@ -33,6 +33,10 @@ Most problems show up in the wings log at boot, or in `journalctl -u docker -u c
     The egg's `curl` calls return nothing and the server later fails to start because `server.jar` is missing. Inside a VM, `/etc/resolv.conf` must not point at 127.0.0.11, Docker's embedded resolver, which only answers in the container's own network namespace. This fork writes `docker.network.dns` into the VM's `resolv.conf` for exactly that reason. If it still fails, check that the servers listed in `docker.network.dns` are reachable from the node.
   </Accordion>
 
+  <Accordion title="agent create container: Read-only file system (os error 30)">
+    Something tried to bind-mount a host file into `/sys` or `/proc` inside the VM. Those are the guest kernel's own filesystems, so the Kata agent cannot create the mountpoint. Wings mounts a per-server `/sys/class/dmi/id/product_uuid` on hosts that have DMI, which covers most dedicated servers and VMs. This fork skips mounts under `/sys` and `/proc` for VM isolated servers and logs `not mounting ... into the VM`. A server mount configured in the panel with a target there is skipped the same way.
+  </Accordion>
+
   <Accordion title="OCI runtime create failed: ... io.weight: no such file or directory">
     The host kernel has no IO weight controller (no iocost and no BFQ, as on WSL2). Stock wings fails to start every server there, because the panel always sends an IO weight. This fork leaves the weight out and logs `this kernel has no io weight interface` once.
   </Accordion>

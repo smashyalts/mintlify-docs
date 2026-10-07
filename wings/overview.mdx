@@ -268,6 +268,7 @@ Wings keeps its Docker executor. A server is still a Docker container built from
 | Panel stats | host cgroup of the container | Docker stats API, read from inside the guest |
 | CFS burst | host cgroup | not applied |
 | lxcfs | optional | skipped |
+| Host files mounted into `/sys` or `/proc`, such as the per-server DMI `product_uuid` | mounted | skipped, since those belong to the guest kernel |
 | `/dev/kvm` passthrough | supported | not passed through |
 | `docker.network.mode: host` | supported | refused at boot |
 
