@@ -1,0 +1,92 @@
+---
+title: "Claims and protection"
+description: "What stops a player griefing claimed land from the shard next door, and what you have to set up"
+icon: "shield-halved"
+---
+
+A player standing on one shard can break and place blocks up to `ghost-width` (64 by default) past the border, on ground another shard owns. That is what makes a border feel like nothing is there. It also means your claims and region plugin has to be able to stop it, and whether it can depends on **where your claims live**.
+
+<Warning>
+  If your claims plugin keeps its claims on each server separately and you add nothing, a player can edit claimed land within 64 blocks of a border from the shard next door. Read [the bridge](#a-bridge-for-per-server-claims) below.
+</Warning>
+
+## How a cross-border edit is checked
+
+Every break and place across a border goes through three steps, and protection gets a say in two of them.
+
+<Steps>
+  <Step title="Ask the owner">
+    The player's own break or place is cancelled at once, so nothing on their server treats the attempt as an edit yet. The shard that owns the block is asked. It raises [`ShardRemoteEditEvent`](/api/events#shardremoteeditevent): **its** protection can refuse here. If nobody does, it holds the block for a few seconds.
+  </Step>
+  <Step title="Confirm on the player's shard">
+    Only now does the player's own server raise an ordinary `BlockBreakEvent` or `BlockPlaceEvent` for the edit. Every plugin there sees it exactly as a normal edit by that player: **its** protection can still refuse it.
+  </Step>
+  <Step title="Commit">
+    The owner makes the change and says what dropped. The player gets the drops, the tool wears down, the placed block is spent.
+  </Step>
+</Steps>
+
+A refusal at either step changes nothing: no block is broken, no item is spent, nothing drops, and the player is told why in the action bar.
+
+## Which setup you have
+
+<Tabs>
+  <Tab title="Claims every shard can read">
+    A claims plugin that stores its claims in a database every shard reads — built to be cross-server, or pointed at one shared MySQL — already knows about land on the other side of the border. It refuses the edit in step 2, on the player's own shard, with no extra setup.
+
+    The same goes for region plugins configured identically on every shard, such as the same WorldGuard regions on all of them: the player's shard checks the coordinates against the same regions the owner would.
+
+    **Nothing to do.** A bridge on the owner (below) is still worth having as a second check, but it is not required.
+  </Tab>
+  <Tab title="Claims kept per server">
+    A claims plugin that keeps its claims in each server's own files only knows about land claimed **on that server**. The player's shard has never heard of a claim on the neighbour's ground, so step 2 lets the edit through, and the owner's claims plugin never sees an edit it recognises: no player is online there to raise `BlockBreakEvent` for.
+
+    **You need the bridge.** Without it, claimed land within `ghost-width` of a border can be edited from the next shard.
+  </Tab>
+</Tabs>
+
+## A bridge for per-server claims
+
+A small plugin on every shard that listens for `ShardRemoteEditEvent` and asks your claims plugin the question it would have asked about a local edit. The player is not online on that server, so ask by UUID.
+
+```java
+public final class ClaimsBridge extends JavaPlugin implements Listener {
+
+    @Override
+    public void onEnable() {
+        getServer().getPluginManager().registerEvents(this, this);
+    }
+
+    @EventHandler
+    public void onRemoteEdit(ShardRemoteEditEvent e) {
+        Location where = e.block() != null ? e.block().getLocation() : e.target().getLocation();
+        // Replace with your claims plugin's own check, by player UUID.
+        if (!YourClaims.canBuild(e.actor(), where)) {
+            e.setCancelled(true);
+            e.setReason("That land is claimed.");
+        }
+    }
+}
+```
+
+`action()` tells you whether it is a `BREAK`, a `PLACE` or a `HIT` on an entity, so a bridge can protect pets and villagers in a claim too. Install it on **every** shard: each one is the owner of its own region.
+
+<Tip>
+  Test it the way a griefer would: stand on one shard within a few blocks of the border, facing a claim on the other, and try to break a block of it. The action bar should show your reason.
+</Tip>
+
+## Jobs, economy and skill plugins
+
+They see each successful cross-border edit **once**, on the player's shard, as a normal `BlockBreakEvent` or `BlockPlaceEvent` — so mining across a border pays the same as mining at your feet. An edit refused at any step never raises an event there, so it cannot be farmed by swinging at a protected block.
+
+The owner's shard raises no Bukkit block event for the edit at all, so nothing pays twice.
+
+## What else is guarded
+
+- **Drops from mirrored ground.** The other side of the border is a copy on your shard. A plugin that answers a break by breaking the blocks around it — vein miners, tree fellers — would otherwise drop real items from that copy while the real blocks still stand on the owner. Atlas refuses any entity spawning on ground your shard does not own, so those drops never appear.
+- **Items carrying their own data** — a filled shulker box, a named or written block — cannot be placed across a border, since only the block's state is forwarded.
+- **Containers, doors and anything with a screen** cannot be used across a border at all.
+
+## Hitting across a border
+
+Hitting a mob's ghost forwards the hit to the owner, which raises `ShardRemoteEditEvent` with `HIT` before applying it. There is no attacker on that server, so kill credit, statistics and advancements are not awarded. Hitting another player's ghost does nothing: there is no cross-border PvP.

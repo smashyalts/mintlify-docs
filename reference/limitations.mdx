@@ -19,8 +19,8 @@ icon: "triangle-exclamation"
   <Accordion title="Chunks past the ghost band are a snapshot">
     Under the player's view distance, past the ghost band, nothing is mirrored live. With [border chunks](/concepts/border-chunks) on, the neighbour shows the owner's ground as of its last publish; without them, it shows its own generated terrain. Either way it is scenery that will not track edits in real time.
   </Accordion>
-  <Accordion title="A protection plugin on the owning shard sees a forwarded edit only through the Atlas event">
-    There is no player object there to raise `BlockBreakEvent` or `BlockPlaceEvent` for. Atlas raises `ShardRemoteEditEvent` instead, so a claims plugin protects land from across a border only if it, or a small bridge plugin, listens for that. Protection on the player's own shard already applies: edits are forwarded only after it has had its say.
+  <Accordion title="Per-server claims need a bridge to stop edits from across a border">
+    There is no player object on the owning shard to raise `BlockBreakEvent` or `BlockPlaceEvent` for, so Atlas raises `ShardRemoteEditEvent` there instead. Claims stored where every shard can read them are checked on the player's own shard and need nothing; claims kept per server need a small bridge plugin listening for the event. See [Claims and protection](/deploy/protection).
   </Accordion>
 </AccordionGroup>
 
