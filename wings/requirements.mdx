@@ -1,0 +1,65 @@
+---
+title: "Requirements"
+description: "Hardware virtualization, Docker, and what a VM per server costs"
+icon: "list-check"
+---
+
+## The node
+
+| | Needed |
+| --- | --- |
+| CPU | x86_64 or arm64 with hardware virtualization: Intel VT-x, AMD-V, or the ARM virtualization extensions |
+| `/dev/kvm` | Present on the node |
+| Kernel | Linux with cgroup v2 |
+| Docker | 22.06 or newer, which can start containerd shim v2 runtimes |
+| Disk | About 2.3 GB for `/opt/kata` |
+| Panel | Pterodactyl 1.15.x, unmodified |
+
+Tested with Kata Containers 4.2.0 (runtime-rs, Cloud Hypervisor 51.1, guest kernel 6.18), panel 1.15.1, Docker 28.5 on Ubuntu 24.04 under WSL2, and Docker 29.8 on Ubuntu 24.04 in a Proxmox VM.
+
+## Checking for KVM
+
+```bash
+ls -l /dev/kvm
+grep -cE 'vmx|svm' /proc/cpuinfo
+```
+
+The first command has to list a character device and the second has to print a number above zero.
+
+| Host | Works |
+| --- | --- |
+| Dedicated server | Yes, with VT-x or AMD-V (SVM) enabled in the firmware |
+| KVM-based VPS or Proxmox VM | Only with nested virtualization enabled on the hypervisor and the VM's CPU type set to `host` |
+| OpenVZ, LXC or any other container | No. There is no `/dev/kvm` to give it |
+| WSL2 on Windows 11 | Yes, for testing |
+
+<Note>
+  Nested virtualization works, and it is slower than bare metal: every VM exit goes through two hypervisors. The [benchmarks](/wings/benchmarks) ran nested, so a dedicated server does better than them.
+</Note>
+
+## What each server costs
+
+Measured with the Paper egg, a 4 GiB server, idle after start, on WSL2:
+
+| | runc | Kata |
+| --- | --- | --- |
+| Host memory for the server | 1.01 GiB | 1.54 GiB |
+| Host CPU at idle | 3% of one core | 8% of one core |
+| Processes on the host | `java` | `cloud-hypervisor` 1.5 GiB, `virtiofsd` 270 MiB, shim 26 MiB |
+
+Plan for roughly half a gigabyte of extra host memory per server. Most of it is virtiofsd and pages the guest kernel keeps cached.
+
+The ceiling is fixed: a VM cannot use more memory than it booted with, which is the server's limit plus `default_memory` (256 MiB). The difference from runc is who can reclaim the page cache. Under runc a server's file cache is host page cache that the host drops under pressure. Inside a VM it is guest memory, which the host sees as used until the guest frees it.
+
+<Warning>
+  Sell memory with that ceiling in mind. A node that is full under runc is over-committed under Kata by about 0.5 GiB per server.
+</Warning>
+
+## Not supported in VM mode
+
+| Setting | Reason |
+| --- | --- |
+| `docker.network.mode: host` or `container:<id>` | A VM has its own network stack and cannot share the host's. Wings refuses to boot with it. |
+| `kvm_passthrough_enabled` on a server | `/dev/kvm` is not passed into the guest, and wings logs a warning |
+| `docker.userns_mode` | Kata does not support user namespace remapping. Wings warns at boot |
+| lxcfs | Not needed, since the guest reports its own memory and CPUs. Wings skips the lxcfs mounts |
