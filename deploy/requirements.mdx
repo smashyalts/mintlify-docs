@@ -72,6 +72,12 @@ redis://host:6379/1
 
 This is the requirement with no error message, and the one that looks like a bug in Atlas when it bites.
 
-Chunk decoration is not a pure function of the seed. Four servers generating "the same" world from the same seed disagree about where the trees are, visibly, at every border, as a seam where terrain does not line up.
+Every shard uses the **same `level-seed`** and the **same `level-name`**, and turns on `tuning.border-chunks`. Each shard then generates only its own region, and the ground either side of each border is shared through MongoDB.
 
-So generate the world once, pre-generate it out to the edge of the grid, stop the server, and copy the folder to every shard. Every shard must also use the same `level-name`. Each then keeps its own copy and what players build on region 0 lives only on region 0's server, which is the point.
+That sharing is what the seed alone cannot give you. Chunk decoration is not a pure function of the seed, so servers generating "the same" world disagree about where the trees are, and without it every border shows a seam. How it works, and what it costs, is in [Same seed, no world copy](/concepts/border-chunks).
+
+<Note>
+  Border chunks are off by default while they are new. The alternative is the original approach: generate the world once, pre-generate it to the edge of the grid, and copy the folder to every shard, so each holds the whole map.
+</Note>
+
+What players build on region 0 lives only on region 0's server either way. That is the point.
