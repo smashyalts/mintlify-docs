@@ -59,7 +59,8 @@
             "pages": [
               "wings/overview",
               "wings/installation",
-              "wings/configuration"
+              "wings/configuration",
+              "wings/troubleshooting"
             ]
           },
           {

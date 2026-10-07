@@ -1,0 +1,57 @@
+---
+title: "Troubleshooting"
+description: "Errors from wings, Docker and Kata, and the fix for each"
+icon: "wrench"
+---
+
+Most problems show up in the wings log at boot, or in `journalctl -u docker -u containerd` when a VM fails to start.
+
+<AccordionGroup>
+  <Accordion title="docker runtime kata-clh is not registered with the docker daemon">
+    `docker.runtime` names a runtime Docker does not have. List the registered ones:
+
+    ```bash
+    docker info --format '{{json .Runtimes}}'
+    ```
+
+    Re-run `contrib/kata/install-kata.sh`, or check that `/etc/docker/daemon.json` still has the `runtimes` entry and Docker was restarted after it was added.
+  </Accordion>
+
+  <Accordion title="docker.require_vm_isolation is set, but the runtime runc does not isolate containers in a VM">
+    Wings found no Kata runtime, or `runtime_isolation` is `container`. Install Kata, or check `config.yml` for a `runtime_isolation: container` left behind by an environment override. Wings writes overrides back to the file.
+  </Accordion>
+
+  <Accordion title="docker.network.mode host cannot be used with a VM isolated runtime">
+    A VM has its own network stack and cannot join the host's network namespace. Use the default bridge network (`pterodactyl_nw` or `calagopus_nw`). When `docker.runtime` is empty, wings stays on runc instead of failing, and logs that it is not using the Kata runtime.
+  </Accordion>
+
+  <Accordion title="A server still shows the host kernel after the switch">
+    It has not restarted since Kata was installed. A running server keeps its container. Restart it, then check with `docker exec <uuid> uname -r`.
+  </Accordion>
+
+  <Accordion title="The install script runs but downloads nothing">
+    The egg's `curl` calls return nothing and the server later fails to start because `server.jar` is missing. Inside a VM, `/etc/resolv.conf` must not point at 127.0.0.11, Docker's embedded resolver, which only answers in the container's own network namespace. This fork writes `docker.network.dns` into the VM's `resolv.conf` for exactly that reason. If it still fails, check that the servers listed in `docker.network.dns` are reachable from the node.
+  </Accordion>
+
+  <Accordion title="OCI runtime create failed: ... io.weight: no such file or directory">
+    The host kernel has no IO weight controller (no iocost and no BFQ, as on WSL2). Stock wings fails to start every server there, because the panel always sends an IO weight. This fork leaves the weight out and logs `this kernel has no io weight interface` once.
+  </Accordion>
+
+  <Accordion title="Cloud Hypervisor fails to start the VM">
+    Check `/dev/kvm`:
+
+    ```bash
+    ls -l /dev/kvm
+    ```
+
+    On a VPS without nested virtualization the device is missing and no VM can boot. `journalctl -u containerd` has the shim's own error.
+  </Accordion>
+
+  <Accordion title="Memory shown in the panel is lower than the host uses">
+    The panel shows memory used inside the guest. The host also holds the guest kernel, Kata agent, Cloud Hypervisor and virtiofsd, plus whatever the guest kernel keeps cached. See [Benchmarks](/wings/benchmarks) for measured numbers. `reclaim_guest_freed_memory` hands freed guest pages back, but page cache inside the guest counts as used until the guest drops it.
+  </Accordion>
+
+  <Accordion title="A memory increase does not take effect">
+    The VM keeps the size it booted with. Restart the server after raising its memory in the panel.
+  </Accordion>
+</AccordionGroup>
