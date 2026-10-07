@@ -58,7 +58,8 @@
             "icon": "cube",
             "pages": [
               "wings/overview",
-              "wings/installation"
+              "wings/installation",
+              "wings/configuration"
             ]
           },
           {
