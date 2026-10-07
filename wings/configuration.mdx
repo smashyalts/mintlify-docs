@@ -70,7 +70,7 @@ The install script copies Kata's Cloud Hypervisor config to `/etc/kata-container
 | --- | --- | --- | --- |
 | `disable_guest_seccomp` | `true` | `false` | The seccomp profile wings generates for each server is applied inside the guest too. |
 | `enable_annotations` | kernel params, vCPUs, memory and more | `[]` | No container annotation can change the VM's kernel command line or size. |
-| `default_memory` | `2048` | `256` | Memory for the guest kernel and Kata agent, on top of the server's own limit. |
+| `overhead_memory` | `32` | `256` | Memory for the guest kernel and Kata agent, added to the server's own limit when the VM is sized. `default_memory` only applies to containers without a memory limit, which wings never creates. |
 | `reclaim_guest_freed_memory` | `false` | `true` | Memory the guest frees goes back to the host. |
 | `virtio_fs_cache_size` | `0` | `0` | Pinned so virtio-fs DAX stays off. DAX would map host page cache into the guest. |
 
@@ -82,7 +82,7 @@ The panel's limits reach the server the same way as before, through Docker, and 
 
 | Panel limit | Inside the VM |
 | --- | --- |
-| Memory | The VM boots with the container's memory limit; the guest cgroup enforces it. `/proc/meminfo` shows it. |
+| Memory | The VM boots with the container's memory limit plus `overhead_memory`; the guest cgroup enforces the limit. `/proc/meminfo` shows the VM's size. |
 | CPU | The VM gets enough vCPUs to cover the limit; the guest cgroup enforces the exact quota. |
 | Disk | Unchanged. The server directory stays on the host, where wings' disk limiter already works. |
 | IO weight | Passed to Kata. It does not weight host disk access, because the server's files are served by virtiofsd on the host. |

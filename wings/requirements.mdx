@@ -49,7 +49,7 @@ Measured with the Paper egg, a 4 GiB server, idle after start, on WSL2:
 
 Plan for roughly half a gigabyte of extra host memory per server. Most of it is virtiofsd and pages the guest kernel keeps cached.
 
-The ceiling is fixed: a VM cannot use more memory than it booted with, which is the server's limit plus `default_memory` (256 MiB). The difference from runc is who can reclaim the page cache. Under runc a server's file cache is host page cache that the host drops under pressure. Inside a VM it is guest memory, which the host sees as used until the guest frees it.
+The ceiling is fixed: a VM cannot use more memory than it booted with, which is the server's limit plus `overhead_memory` (256 MiB). The difference from runc is who can reclaim the page cache. Under runc a server's file cache is host page cache that the host drops under pressure. Inside a VM it is guest memory, which the host sees as used until the guest frees it.
 
 <Warning>
   Sell memory with that ceiling in mind. A node that is full under runc is over-committed under Kata by about 0.5 GiB per server.
