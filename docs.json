@@ -49,7 +49,8 @@
               "deploy/requirements",
               "deploy/shared-hosting",
               "deploy/configuration",
-              "deploy/security"
+              "deploy/security",
+              "deploy/protection"
             ]
           },
           {

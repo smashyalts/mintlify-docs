@@ -57,14 +57,15 @@ It also turns a plugin's cross-region teleport into a proper transfer, which is 
 
 ## Reaching across
 
-Breaking, placing and hitting across a border do work. The shard the player is standing on cannot make the change and the shard that owns the block cannot see the player, so the edit is forwarded and each side does the half it is authoritative for. The owner reads the block, decides what it drops and applies the change; the player's own shard spends the item, damages the tool and hands over the drops.
+Breaking, placing and hitting across a border do work. The shard the player is standing on cannot make the change and the shard that owns the block cannot see the player, so each side does the half it is authoritative for, in three steps:
 
-Protection gets a say on both sides:
+1. **Ask.** The player's own attempt is cancelled at once, so nothing on their server treats it as an edit yet. The owner checks the block and raises [`ShardRemoteEditEvent`](/api/events#shardremoteeditevent) for its own protection, and if the edit may go ahead, holds the block for a few seconds.
+2. **Confirm.** Only then does the player's shard raise an ordinary `BlockBreakEvent` or `BlockPlaceEvent`. Every plugin there — protection, jobs, economy, logging — sees exactly one real edit, and any of them can still refuse it.
+3. **Commit.** The owner applies the change and says what dropped; the player's shard spends the item, wears the tool and hands over the drops.
 
-- **On the player's shard**, the edit is forwarded only after every other plugin has handled the `BlockBreakEvent` or `BlockPlaceEvent`. If anything cancels it, nothing is sent.
-- **On the owning shard**, there is no player object to raise those events for, so Atlas raises [`ShardRemoteEditEvent`](/api/events#shardremoteeditevent) instead. Cancelling it refuses the edit and the player is told why. A claims plugin has to listen for it to protect land from across a border.
+A refusal at either step changes nothing and raises nothing, so a protected block cannot be farmed for rewards by swinging at it. Setting up protection for this is covered in [Claims and protection](/deploy/protection).
 
-It never errs towards a duplicate. A break hands over drops only when the owner confirms it. A place is refunded only when the owner explicitly refuses; if the owner does not answer, the item is not refunded, because the block may well be standing over there. And an item carrying data of its own — a filled shulker box, a named or written block — does not place across a border at all, since only the block's state is forwarded and it would arrive empty.
+It never errs towards a duplicate. A break hands over drops only when the owner confirms it applied. A place spends the item before the commit and refunds it only when the owner explicitly refuses; if the owner does not answer, the item is not refunded, because the block may well be standing over there. An item carrying data of its own — a filled shulker box, a named or written block — does not place across a border at all, since only the block's state is forwarded. And no entity can spawn on ground the shard does not own, so a vein miner answering a confirmed break by breaking the mirrored blocks around it gets no drops from a copy.
 
 <Warning>
 Interactions are refused on purpose. A container or a screen is a live session against a block on a server this one cannot hold a reference to, and half-implementing that is how you get duplicated items. Players get an action bar line saying so rather than silence.

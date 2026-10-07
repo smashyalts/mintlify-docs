@@ -61,7 +61,7 @@ The vanilla kill statistic is already incremented before it fires. Not cancellab
 
 ## ShardRemoteEditEvent
 
-A player on a neighbouring shard is breaking, placing or hitting something on this shard's ground, across the border. Fired on the shard that owns it, on the main thread, before anything changes. Cancellable.
+A player on a neighbouring shard is breaking, placing or hitting something on this shard's ground, across the border. Fired on the shard that owns it, on the main thread, before anything changes — it is the owner's half of the check, and the player's own shard then raises an ordinary `BlockBreakEvent` or `BlockPlaceEvent` as the other half. Cancellable. Which half your setup needs is in [Claims and protection](/deploy/protection).
 
 The player is not on this server, so no `BlockBreakEvent`, `BlockPlaceEvent` or `EntityDamageByEntityEvent` can be raised for them here. This is the event a claims or region plugin listens to instead.
 
