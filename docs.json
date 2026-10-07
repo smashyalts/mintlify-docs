@@ -54,6 +54,13 @@
             ]
           },
           {
+            "group": "MicroVM wings",
+            "icon": "cube",
+            "pages": [
+              "wings/overview"
+            ]
+          },
+          {
             "group": "Operating",
             "icon": "gauge",
             "pages": [
