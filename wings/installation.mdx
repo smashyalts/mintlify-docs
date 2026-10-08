@@ -89,6 +89,39 @@ Do this one node at a time. Read [Requirements](/wings/requirements) first: a no
   </Step>
 </Steps>
 
+## gVisor instead of Kata
+
+A node without `/dev/kvm`, such as a VPS without nested virtualization, cannot run Kata. gVisor runs there, with a weaker boundary than a VM. [Choosing a runtime](/wings/runtimes) compares the two.
+
+<Steps>
+  <Step title="Install gVisor">
+    ```bash
+    sudo apt install zstd
+    sudo ./contrib/gvisor/install-gvisor.sh
+    ```
+
+    The script downloads the latest gVisor release (or the one named as its first argument, such as `20260928.0`), checks its SHA-512, unpacks `runsc` and its shim into `/usr/local/bin`, registers a `runsc` runtime with `runsc install`, restarts Docker and starts a test container. The same Docker restart warning applies as for Kata.
+  </Step>
+  <Step title="Point wings at it">
+    Wings only picks Kata on its own, so name the runtime in `config.yml` and restart wings:
+
+    ```yaml config.yml
+    docker:
+      runtime: runsc
+    ```
+
+    ```text
+    found the runsc container runtime, using it for all servers
+    servers run sandboxed (not in a VM) using the runsc container runtime
+    ```
+
+    `/api/system` reports `"container_runtime": "runsc"`, `"vm_isolated": false` and `"sandboxed": true`. Leave `require_vm_isolation` off: gVisor is not a VM, and wings refuses to boot with both set.
+  </Step>
+  <Step title="Restart the servers">
+    The same as for Kata. `docker exec <server uuid> uname -r` prints a version ending in `-gvisor`.
+  </Step>
+</Steps>
+
 ## Rolling back
 
 Set `docker.runtime_isolation: container` and restart wings. Servers go back to runc on their next start. Putting the previous wings binary back does the same. The Kata runtime can stay registered in Docker, which only uses it when a container asks for it.
