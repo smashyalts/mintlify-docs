@@ -1,0 +1,77 @@
+---
+title: "Requirements"
+description: "Hardware virtualization, Docker, and what a VM per server costs"
+icon: "list-check"
+---
+
+## The node
+
+| | Needed |
+| --- | --- |
+| CPU | x86_64 or arm64 with hardware virtualization: Intel VT-x, AMD-V, or the ARM virtualization extensions |
+| `/dev/kvm` | Present on the node |
+| Kernel | Linux with cgroup v2 |
+| Docker | 22.06 or newer, which can start containerd shim v2 runtimes |
+| Disk | About 2.3 GB for `/opt/kata` |
+| Panel | Pterodactyl 1.15.x, unmodified |
+
+Tested with Kata Containers 4.2.0 (runtime-rs, Cloud Hypervisor 51.1, guest kernel 6.18), panel 1.15.1, Docker 28.5 on Ubuntu 24.04 under WSL2, and Docker 29.8 on Ubuntu 24.04 in a Proxmox VM.
+
+## Checking for KVM
+
+```bash
+ls -l /dev/kvm
+grep -cE 'vmx|svm' /proc/cpuinfo
+```
+
+The first command has to list a character device and the second has to print a number above zero.
+
+| Host | Works |
+| --- | --- |
+| Dedicated server | Yes, with VT-x or AMD-V (SVM) enabled in the firmware |
+| KVM-based VPS or Proxmox VM | Only with nested virtualization enabled on the hypervisor and the VM's CPU type set to `host` |
+| OpenVZ, LXC or any other container | No. There is no `/dev/kvm` to give it |
+| WSL2 on Windows 11 | Yes, for testing |
+
+<Note>
+  Nested virtualization works, and it is slower than bare metal: every VM exit goes through two hypervisors. The [benchmarks](/wings/benchmarks) ran nested, so a dedicated server does better than them.
+</Note>
+
+## What each server costs
+
+Measured with the Paper egg, a 4 GiB server, idle after start, in a Proxmox VM:
+
+|  | runc | gVisor | Kata |
+| --- | --- | --- | --- |
+| Host memory for the server | 1013 MiB | 908 MiB | 1300 MiB |
+| Host CPU at idle | 1.1% of one core | 3.2% of one core | 3.3% of one core |
+| Boot to `Done` | 6.4 s | 9.6 s | 17.8 s |
+| Processes on the host | `java` | the Sentry and its gofer | `cloud-hypervisor` 1.3 GiB, `virtiofsd` 260 MiB, shim 27 MiB |
+
+Plan for about 300 MiB of extra host memory per Kata server, most of it virtiofsd, and expect boots to take around 10 seconds longer. Under WSL2, with an extra layer of virtualization, the memory overhead was closer to 0.5 GiB. [Benchmarks](/wings/benchmarks) has the full numbers.
+
+The ceiling is fixed: a VM cannot use more memory than it booted with, which is the server's limit plus `overhead_memory` (256 MiB). The difference from runc is who can reclaim the page cache. Under runc a server's file cache is host page cache that the host drops under pressure. Inside a VM it is guest memory, which the host sees as used until the guest frees it.
+
+<Warning>
+  Sell memory with that ceiling in mind. A node that is full under runc is over-committed under Kata by the `overhead_memory` of every server plus virtiofsd, roughly 0.5 GiB per server at worst.
+</Warning>
+
+## gVisor
+
+|  | Needed |
+| --- | --- |
+| CPU | x86_64 or arm64; no hardware virtualization needed |
+| Docker | Any version that accepts a runtime by path in `daemon.json` |
+| Disk | About 320 MB in `/usr/local/bin` |
+| Install script | `curl`, `zstd` and `sha512sum` |
+
+gVisor runs on any Linux host that can run Docker, including VPSes without nested virtualization. A gVisor server stays inside its own memory limit: the Sentry is charged to the server's cgroup on the host, and there is no guest kernel to reserve memory for.
+
+## Not supported in VM mode
+
+| Setting | Reason |
+| --- | --- |
+| `docker.network.mode: host` or `container:<id>` | A VM has its own network stack and cannot share the host's. Wings refuses to boot with it. |
+| `kvm_passthrough_enabled` on a server | `/dev/kvm` is not passed into the guest, and wings logs a warning |
+| `docker.userns_mode` | Kata does not support user namespace remapping. Wings warns at boot |
+| lxcfs | Not needed, since the guest reports its own memory and CPUs. Wings skips the lxcfs mounts |

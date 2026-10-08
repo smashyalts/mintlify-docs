@@ -1,0 +1,121 @@
+---
+title: "Configuration"
+description: "Choosing the runtime, opting out, failing closed, and the Kata settings"
+icon: "gear"
+---
+
+The settings live under `docker` in wings' `config.yml`. Nothing needs setting for the default behaviour: with Kata installed, wings uses it, and the hardened seccomp profile is on either way.
+
+```yaml config.yml
+docker:
+  runtime: ""
+  runtime_isolation: auto
+  require_vm_isolation: false
+  container_seccomp_hardening: true
+```
+
+| Setting | Default | Effect |
+| --- | --- | --- |
+| `runtime` | empty | OCI runtime for server, installer and script containers. Empty picks a registered runtime whose name contains `kata`, preferring Cloud Hypervisor, and otherwise uses Docker's default runtime. |
+| `runtime_isolation` | `auto` | `auto` treats a runtime as VM isolated when its name contains `kata`, and as sandboxed when it contains `runsc` or `gvisor`. `container` never picks Kata on its own. `sandbox` and `vm` classify a runtime with any other name. |
+| `require_vm_isolation` | `false` | Refuse to boot, and refuse to create containers, unless the runtime is VM isolated. gVisor does not count. |
+| `container_seccomp_hardening` | `true` | Add the [hardened seccomp rules](#hardened-seccomp) to server, installer and script containers. |
+
+## Common setups
+
+<Tabs>
+  <Tab title="Kata, fail closed">
+    ```yaml
+    docker:
+      require_vm_isolation: true
+    ```
+  </Tab>
+  <Tab title="gVisor">
+    For a node without `/dev/kvm`. `require_vm_isolation` has to stay off:
+
+    ```yaml
+    docker:
+      runtime: runsc
+    ```
+  </Tab>
+  <Tab title="Stay on runc">
+    Kata is installed for other workloads, but this node keeps shared-kernel containers:
+
+    ```yaml
+    docker:
+      runtime_isolation: container
+    ```
+  </Tab>
+  <Tab title="Custom VM runtime">
+    A runtime registered under a name without `kata` in it, such as a gVisor-in-VM shim or a renamed Kata entry:
+
+    ```yaml
+    docker:
+      runtime: my-vm-shim
+      runtime_isolation: vm
+      require_vm_isolation: true
+    ```
+  </Tab>
+</Tabs>
+
+Wings resolves the runtime once, at boot. A change to these settings needs a wings restart, and servers move to the new runtime on their next start.
+
+<Note>
+  A server keeps the isolation of the runtime it was started with. Switching a node to Kata leaves running servers in their runc containers, and wings treats each one according to the runtime Docker reports for it.
+</Note>
+
+## The panel cannot change these
+
+`docker.runtime`, `docker.runtime_isolation`, `docker.require_vm_isolation` and `docker.container_seccomp_hardening` are on wings' list of keys a panel configuration update may not touch, next to `docker.socket` and the data directories. A compromised panel cannot move a node back to shared-kernel containers. Change them in the file on the node.
+
+<Warning>
+  Wings writes its effective configuration back to `config.yml`, environment overrides included. Starting wings once with `CALAGOPUS_DOCKER_RUNTIME_ISOLATION=container` leaves `runtime_isolation: container` in the file afterwards.
+</Warning>
+
+## Hardened seccomp
+
+Docker's default seccomp profile, and the one stock wings sends, leave open the exact entry points that Copy Fail and GhostLock use. The hardened profile closes them for every runtime: under runc it is the only thing standing between those exploits and the host kernel, and inside a Kata guest it protects the guest kernel as well.
+
+| Entry point | Used by | Docker default | Stock wings | Hardened |
+| --- | --- | --- | --- | --- |
+| `socket(AF_ALG, ...)` | Copy Fail | open | open | blocked, `EAFNOSUPPORT` |
+| `splice`, `tee` | Copy Fail, Dirty Pipe | open | open | blocked, `ENOSYS` |
+| `futex` priority inheritance ops (`LOCK_PI`, `LOCK_PI2`, `WAIT_REQUEUE_PI`, `CMP_REQUEUE_PI` and the rest) | GhostLock | open | open | blocked, `ENOSYS` |
+| `unshare` and `clone` with `CLONE_NEWUSER` | netfilter and filesystem escapes that need a user namespace | blocked | **open** | blocked, `EPERM` |
+| `keyctl` | keyring bugs | open | open | blocked, `ENOSYS` |
+| plain `futex` wait and wake | every JVM | allowed | allowed | allowed |
+
+These results come from a probe run inside containers created by wings, with the profile wings actually sent. Denied calls fail the way a kernel without the feature would, so software that checks for them falls back. `clone3` returns `ENOSYS` as well, so libc falls back to `clone`, whose flags can be filtered.
+
+<Warning>
+  Seccomp blocks known entry points, not unknown bugs. A future kernel bug in a syscall that game servers have to use, such as `read`, `write`, `mmap`, `epoll` or the TCP stack, still reaches the host kernel from a runc container. Kata blocks that too, because the server never talks to the host kernel at all.
+</Warning>
+
+The Paper egg runs unchanged with the hardened profile, install script included. If software in another egg needs one of these calls, set `container_seccomp_hardening: false` on that node.
+
+## Kata settings
+
+The install script copies Kata's Cloud Hypervisor config to `/etc/kata-containers/runtime-rs/configuration.toml` and changes these keys:
+
+| Key | Kata default | Set to | Reason |
+| --- | --- | --- | --- |
+| `disable_guest_seccomp` | `true` | `false` | The seccomp profile wings generates for each server is applied inside the guest too. |
+| `enable_annotations` | kernel params, vCPUs, memory and more | `[]` | No container annotation can change the VM's kernel command line or size. |
+| `overhead_memory` | `32` | `256` | Memory for the guest kernel and Kata agent, added to the server's own limit when the VM is sized. `default_memory` only applies to containers without a memory limit, which wings never creates. |
+| `reclaim_guest_freed_memory` | `false` | `true` | Memory the guest frees goes back to the host. |
+| `virtio_fs_cache_size` | `0` | `0` | Pinned so virtio-fs DAX stays off. DAX would map host page cache into the guest. |
+
+`debug_console_enabled = false` and `sandbox_cgroup_only = true` are Kata's defaults and are kept. Edit the file and restart Docker to change anything else; new values apply to VMs started afterwards.
+
+## Resource limits inside a VM
+
+The panel's limits reach the server the same way as before, through Docker, and Kata applies them inside the guest:
+
+| Panel limit | Inside the VM |
+| --- | --- |
+| Memory | The VM boots with the container's memory limit plus `overhead_memory`; the guest cgroup enforces the limit. `/proc/meminfo` shows the VM's size. |
+| CPU | The VM gets enough vCPUs to cover the limit; the guest cgroup enforces the exact quota. |
+| Disk | Unchanged. The server directory stays on the host, where wings' disk limiter already works. |
+| IO weight | Passed to Kata. It does not weight host disk access, because the server's files are served by virtiofsd on the host. |
+
+Raising a server's memory while it runs updates the guest cgroup, but the VM keeps the size it booted with until the server restarts.

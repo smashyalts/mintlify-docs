@@ -1,0 +1,126 @@
+---
+title: "Installation"
+description: "Kata on the node, the wings binary, and checking servers really run in VMs"
+icon: "download"
+---
+
+Do this one node at a time. Read [Requirements](/wings/requirements) first: a node without `/dev/kvm` cannot run Kata at all.
+
+<Steps>
+  <Step title="Install Kata Containers">
+    From a checkout of the fork, as root:
+
+    ```bash
+    sudo ./contrib/kata/install-kata.sh
+    ```
+
+    The script installs the `kata-static` release into `/opt/kata`, writes a hardened Cloud Hypervisor config to `/etc/kata-containers/runtime-rs/configuration.toml`, registers a `kata-clh` runtime in `/etc/docker/daemon.json` with a backup kept next to it, and restarts Docker. It ends by starting a container under Kata and failing if that container reports the host's kernel.
+
+    <Warning>
+      Restarting Docker stops every running container on the node, game servers included, unless `live-restore` is on in `daemon.json`. Run the script in a maintenance window.
+    </Warning>
+
+    | Variable | Default | Effect |
+    | --- | --- | --- |
+    | first argument | `4.2.0` | Kata release to install |
+    | `KATA_RUNTIME_NAME` | `kata-clh` | Docker runtime name to register |
+    | `KATA_BASE_MEMORY_MIB` | `256` | Memory for the guest kernel and agent, on top of the server's limit |
+    | `KATA_ARCHIVE` | unset | Path to an already downloaded `kata-static` archive |
+  </Step>
+
+  <Step title="Replace the wings binary">
+    Build the fork and put it where the current wings binary lives:
+
+    ```bash
+    cargo build --release -p wings-rs
+    sudo systemctl stop wings
+    sudo install -m 755 target/release/wings-rs /usr/local/bin/wings
+    sudo systemctl start wings
+    ```
+
+    The existing config works as it is. Wings reads `/etc/calagopus-wings/config.yml`, then `/etc/pterodactyl/config.yml`, so a node set up for stock Pterodactyl wings keeps its configuration. Stopping wings does not stop the servers; it re-attaches to them on start.
+  </Step>
+
+  <Step title="Check that wings picked up Kata">
+    The startup log names the runtime:
+
+    ```text
+    found the kata-clh container runtime, using it for all servers
+    servers run in microVMs using the kata-clh container runtime
+    ```
+
+    The system endpoint reports it too, alongside the fields the panel already reads:
+
+    ```bash
+    curl -s -H "Authorization: Bearer <node token>" http://127.0.0.1:8080/api/system
+    ```
+
+    ```json
+    { "container_runtime": "kata-clh", "vm_isolated": true }
+    ```
+  </Step>
+
+  <Step title="Restart the servers">
+    A running server stays in its old container until it restarts. To restart everything on the node from the panel host:
+
+    ```bash
+    php artisan p:server:bulk-power restart --nodes=<node id>
+    ```
+
+    Then check any server:
+
+    ```bash
+    docker inspect -f '{{.HostConfig.Runtime}}' <server uuid>   # kata-clh
+    docker exec <server uuid> uname -r                          # differs from uname -r on the host
+    ```
+
+    Until a server restarts, wings logs `server is running without VM isolation, restart it to move it into a VM` when `require_vm_isolation` is on.
+  </Step>
+
+  <Step title="Fail closed" icon="lock">
+    Once Kata works on the node, make wings refuse anything else:
+
+    ```yaml config.yml
+    docker:
+      require_vm_isolation: true
+    ```
+
+    Wings then refuses to boot if the runtime is not VM isolated, and refuses to create server, installer or script containers without one. Without this, a node where Kata goes missing (a reinstalled Docker, a removed `daemon.json` entry) falls back to shared-kernel containers and only says so in the log.
+  </Step>
+</Steps>
+
+## gVisor instead of Kata
+
+A node without `/dev/kvm`, such as a VPS without nested virtualization, cannot run Kata. gVisor runs there, with a weaker boundary than a VM. [Choosing a runtime](/wings/runtimes) compares the two.
+
+<Steps>
+  <Step title="Install gVisor">
+    ```bash
+    sudo apt install zstd
+    sudo ./contrib/gvisor/install-gvisor.sh
+    ```
+
+    The script downloads the latest gVisor release (or the one named as its first argument, such as `20260928.0`), checks its SHA-512, unpacks `runsc` and its shim into `/usr/local/bin`, registers a `runsc` runtime with `runsc install`, restarts Docker and starts a test container. The same Docker restart warning applies as for Kata.
+  </Step>
+  <Step title="Point wings at it">
+    Wings only picks Kata on its own, so name the runtime in `config.yml` and restart wings:
+
+    ```yaml config.yml
+    docker:
+      runtime: runsc
+    ```
+
+    ```text
+    servers run sandboxed (not in a VM) using the runsc container runtime
+    ```
+
+    `/api/system` reports `"container_runtime": "runsc"`, `"vm_isolated": false` and `"sandboxed": true`. Leave `require_vm_isolation` off: gVisor is not a VM, and wings refuses to boot with both set.
+  </Step>
+  <Step title="Restart the servers">
+    The same as for Kata. `docker exec <server uuid> uname -r` prints a version ending in `-gvisor`.
+  </Step>
+</Steps>
+
+## Rolling back
+
+Set `docker.runtime_isolation: container` and restart wings, or for gVisor clear `docker.runtime`. Servers go back to runc on their next start. Putting the previous wings binary back does the same. The Kata runtime can stay registered in Docker, which only uses it when a container asks for it.

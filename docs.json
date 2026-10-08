@@ -54,6 +54,19 @@
             ]
           },
           {
+            "group": "MicroVM wings",
+            "icon": "cube",
+            "pages": [
+              "wings/overview",
+              "wings/runtimes",
+              "wings/requirements",
+              "wings/installation",
+              "wings/configuration",
+              "wings/benchmarks",
+              "wings/troubleshooting"
+            ]
+          },
+          {
             "group": "Operating",
             "icon": "gauge",
             "pages": [

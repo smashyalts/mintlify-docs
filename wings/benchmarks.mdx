@@ -1,0 +1,103 @@
+---
+title: "Benchmarks"
+description: "The Paper egg on runc, gVisor and Kata, through the stock panel"
+icon: "chart-line"
+---
+
+Every run drives a stock Pterodactyl 1.15.1 panel and wings through their own APIs, the same way a real node is used:
+
+1. Create or reinstall the server from the Paper egg: Paper 26.3, the egg's Java 25 image, 4 GiB of memory, 200% CPU.
+2. Boot it once with a fresh world, then four more times.
+3. Measure idle CPU, memory and MSPT.
+4. Pre-generate 5,929 chunks with Chunky.
+5. Run `save-all flush`, then send Server List Pings.
+
+The runc runs use the same wings build with `runtime_isolation: container`, which takes stock wings' code path. Runs alternate between the runtimes, so drift on the host hits all of them.
+
+| | Proxmox VM | WSL2 |
+| --- | --- | --- |
+| CPU | Ryzen 9 7940HX, 8 vCPUs | Ryzen 7 7800X3D, 4 vCPUs |
+| OS | Ubuntu 24.04, kernel 6.8, Docker 29.8 | Ubuntu 24.04, WSL2 kernel 6.6, Docker 28.5 |
+| Where the Kata VM runs | inside a Proxmox VM (one level of nesting) | inside WSL2's VM, inside Hyper-V (two levels) |
+| Runtimes | runc, gVisor release-20260928.0, Kata 4.2.0 | runc, Kata 4.2.0 |
+
+<Warning>
+  Both hosts are virtual machines, so every Kata VM here is nested, and nesting makes VM exits and memory access slower. A dedicated server runs Kata closer to runc than these numbers show. gVisor uses its default systrap platform, which needs no KVM. The runc numbers also include wings' default CFS burst, which lets a container briefly exceed its CPU quota. Kata servers do not get it, because their quota is enforced inside the guest.
+</Warning>
+
+## Proxmox VM
+
+Fifteen interleaved runs from one session. "Hardened" is the [hardened seccomp profile](/wings/configuration#hardened-seccomp), which is the default; "stock" is the profile stock wings sends.
+
+|  | runc, stock | runc, hardened | gVisor, hardened | Kata, hardened |
+| --- | --- | --- | --- | --- |
+| Runs | 3 | 4 | 4 | 4 |
+| Chunky pre-generation | 67.0 chunks/s (±5.9) | 71.7 chunks/s (±4.9) | 61.5 chunks/s (±4.7) | 56.5 chunks/s (±2.1) |
+| Against runc, both profiles pooled (69.7) |  |  | -12% | -19% |
+| MSPT during pre-generation | 1.3 ms | 1.3 ms | 6.5 ms, 15 to 20 ms in the first 10 s | 2.3 ms |
+| MSPT idle | 0.1 ms | 0.1 ms | 0.1 ms | 0.1 ms |
+| First boot with world generation | 9.0 s | 8.7 s | 11.9 s | 22.8 s |
+| Boot, wall clock | 6.4 s | 6.4 s | 9.6 s | 17.8 s |
+| Boot, Paper's own `Done` | 5.8 s | 5.8 s | 8.7 s | 11.8 s |
+| Egg install | 3.2 s | 3.2 s | 3.2 s | 7.8 s |
+| Host memory at idle | 1060 MiB | 1013 MiB | 908 MiB | 1300 MiB |
+| Host CPU at idle | 1.2% | 1.1% | 3.2% | 3.3% |
+| Server List Ping round trip, p50 | 0.09 ms | 0.09 ms | 0.18 ms | 0.14 ms |
+| TCP connect, p50 | 0.05 ms | 0.05 ms | 0.11 ms | 0.09 ms |
+
+The hardened profile has no measurable cost. runc measured faster with it than without it, within noise, and Kata measured 56.5 chunks/s with it against 57.1 without it over two runs.
+
+Chunk generation on this host moves between sessions. Over all 25 runc and Kata runs from two days, Kata averaged 59.3 chunks/s against runc's 67.6, 12% behind: 5% on the first day, 19% on the second. Kata's own runs vary least, so most of the spread is in runc and in the Proxmox host underneath.
+
+## WSL2
+
+| | runc | Kata | Difference |
+| --- | --- | --- | --- |
+| Chunky pre-generation | 42.8 chunks/s (±7.0) | 34.5 chunks/s (±0.2) | -19% |
+| MSPT during pre-generation | 1.9 ms | 3.3 ms | +1.4 ms |
+| Boot, wall clock | 10.6 s | 21.4 s | +10.8 s |
+| Host memory at idle | 1006 MiB | 1541 MiB | +535 MiB |
+| Server List Ping round trip, p50 | 0.21 ms | 0.37 ms | +0.16 ms |
+
+Two runs per runtime, with the stock seccomp profile. The second layer of nesting adds to Kata's cost, so plan with the Proxmox numbers.
+
+## Where the time goes
+
+Tick times stay far below the 50 ms budget on all three runtimes. Startup and chunk generation are where the sandboxes cost.
+
+| Part of a boot | runc | gVisor | Kata |
+| --- | --- | --- | --- |
+| Creating and starting an empty container with the server's limits | 0.24 s | 0.25 s | 2.8 s |
+| Paper's own startup | 5.8 s | 8.7 s | 11.8 s |
+
+Kata's empty container is the VM booting its kernel and the Kata agent, and it grows with the VM's memory: 1.4 s without a limit, 2.8 s at the server's 4 GiB. Paper's startup under Kata is Paper opening and reading its libraries, the server jar and the world, each file through virtio-fs. gVisor has no VM to boot, and its file access goes through the Sentry instead.
+
+gVisor's MSPT spike at the start of pre-generation comes from the Sentry handling a burst of new threads, memory mappings and file writes. It settles to 2 to 4 ms within about 30 seconds.
+
+## Tuning that was tried
+
+The Kata settings in [Configuration](/wings/configuration) are the fastest that were measured, and they are also the most locked down. These were tested on the Proxmox VM and left out:
+
+| Change | Result | Kept |
+| --- | --- | --- |
+| virtiofsd thread pool of 4 instead of 1 | 63.8 chunks/s, within run-to-run noise | no |
+| virtiofsd writeback cache | 57.5 chunks/s | no |
+| Transparent huge pages always on in the guest | 58.2 chunks/s over two runs, slower | no |
+| `mitigations=off` on the guest kernel | 56.7 chunks/s, no gain, weakens the guest | no |
+| virtio-fs `cache=always` | 57.5 chunks/s, and slower saves | no |
+| initrd guest instead of the disk image | empty container 4.2 s instead of 2.85 s | no |
+| Paper's recommended G1 flags plus huge pages, on both runtimes | runc 65.0, Kata 60.7 chunks/s, no change for either | no |
+| `reclaim_guest_freed_memory = false` | 53.1 against 55.1 chunks/s over three runs each, no gain | no |
+| Host huge pages for guest RAM (`shmem_enabled=advise` on the host) | 1.35 GiB of guest RAM in 2 MiB pages; 60.4 against 59.5 chunks/s, within noise | no |
+| Hardened seccomp profile inside the guest | 56.5 against 57.1 chunks/s, no cost | yes |
+| `overhead_memory = 256` | correctness: the guest kernel no longer takes memory from the server's limit | yes |
+
+Ruled out without testing, because each one weakens isolation:
+
+- virtio-fs DAX maps host page cache into the guest, giving back the page cache sharing that Copy Fail exploits.
+- VM templating boots VMs faster by cloning one memory image, so every server would share memory pages and kernel address layout with the others.
+- Turning guest seccomp off removes a filter in front of the guest kernel, and the profile it would skip costs nothing measurable.
+
+## Running it yourself
+
+`contrib/kata/bench/bench.py` in the fork runs a phase against any panel and wings pair. `compat.py` checks the panel operations that touch the runtime: console, stats, live build changes, restart and kill. It passed 8 of 8 under Kata on both hosts and under gVisor on the Proxmox VM.
