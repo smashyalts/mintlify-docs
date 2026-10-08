@@ -7,6 +7,8 @@ icon: "cube"
 
 This wings build runs every server, installer and script container in its own lightweight virtual machine, using [Kata Containers](https://katacontainers.io) with the [Cloud Hypervisor](https://www.cloudhypervisor.org) VMM. It is a fork of [Calagopus wings](https://github.com/calagopus/wings) and replaces the wings binary on a node as it is: the stock Pterodactyl panel 1.15.x, eggs, Docker images, allocations, the file manager, SFTP, backups and disk limits keep working without changes.
 
+Nodes without hardware virtualization can run servers on gVisor instead, and every runtime gets a hardened seccomp profile. [Choosing a runtime](/wings/runtimes) compares the three.
+
 ## Containers share the host kernel
 
 Any kernel bug that code inside a container can reach is a way out of that container. Two disclosed in 2026 are reachable from an unprivileged one:
@@ -272,9 +274,14 @@ Wings keeps its Docker executor. A server is still a Docker container built from
 | `/dev/kvm` passthrough | supported | not passed through |
 | `docker.network.mode: host` | supported | refused at boot |
 
+Servers on gVisor get the same changes, apart from host networking, which gVisor supports.
+
 The panel talks to the same wings API, so the panel is not modified at all. A `config.yml` from `wings configure` or from the panel's Configuration tab works unchanged, and wings picks the Kata runtime on its own once Kata is installed.
 
 <CardGroup cols={2}>
+  <Card title="Choosing a runtime" icon="scale-balanced" href="/wings/runtimes">
+    Hardened runc, gVisor or Kata: what each one stops and costs.
+  </Card>
   <Card title="Requirements" icon="list-check" href="/wings/requirements">
     Hardware virtualization, Docker, and the memory each VM costs.
   </Card>
@@ -285,6 +292,6 @@ The panel talks to the same wings API, so the panel is not modified at all. A `c
     Opting out, failing closed, and the Kata settings.
   </Card>
   <Card title="Benchmarks" icon="chart-line" href="/wings/benchmarks">
-    The Paper egg on runc and on Kata, through the stock panel.
+    The Paper egg on runc, gVisor and Kata, through the stock panel.
   </Card>
 </CardGroup>
