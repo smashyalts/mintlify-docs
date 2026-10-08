@@ -4,20 +4,22 @@ description: "Choosing the runtime, opting out, failing closed, and the Kata set
 icon: "gear"
 ---
 
-All three settings live under `docker` in wings' `config.yml`. Nothing needs setting for the default behaviour: with Kata installed, wings uses it.
+The settings live under `docker` in wings' `config.yml`. Nothing needs setting for the default behaviour: with Kata installed, wings uses it, and the hardened seccomp profile is on either way.
 
 ```yaml config.yml
 docker:
   runtime: ""
   runtime_isolation: auto
   require_vm_isolation: false
+  container_seccomp_hardening: true
 ```
 
 | Setting | Default | Effect |
 | --- | --- | --- |
 | `runtime` | empty | OCI runtime for server, installer and script containers. Empty picks a registered runtime whose name contains `kata`, preferring Cloud Hypervisor, and otherwise uses Docker's default runtime. |
-| `runtime_isolation` | `auto` | `auto` treats a runtime as VM isolated when its name contains `kata`. `container` never picks Kata on its own. `vm` marks a custom runtime as VM isolated. |
-| `require_vm_isolation` | `false` | Refuse to boot, and refuse to create containers, unless the runtime is VM isolated. |
+| `runtime_isolation` | `auto` | `auto` treats a runtime as VM isolated when its name contains `kata`, and as sandboxed when it contains `runsc` or `gvisor`. `container` never picks Kata on its own. `sandbox` and `vm` classify a runtime with any other name. |
+| `require_vm_isolation` | `false` | Refuse to boot, and refuse to create containers, unless the runtime is VM isolated. gVisor does not count. |
+| `container_seccomp_hardening` | `true` | Add the [hardened seccomp rules](#hardened-seccomp) to server, installer and script containers. |
 
 ## Common setups
 
@@ -56,11 +58,32 @@ Wings resolves the runtime once, at boot. A change to these settings needs a win
 
 ## The panel cannot change these
 
-`docker.runtime`, `docker.runtime_isolation` and `docker.require_vm_isolation` are on wings' list of keys a panel configuration update may not touch, next to `docker.socket` and the data directories. A compromised panel cannot move a node back to shared-kernel containers. Change them in the file on the node.
+`docker.runtime`, `docker.runtime_isolation`, `docker.require_vm_isolation` and `docker.container_seccomp_hardening` are on wings' list of keys a panel configuration update may not touch, next to `docker.socket` and the data directories. A compromised panel cannot move a node back to shared-kernel containers. Change them in the file on the node.
 
 <Warning>
   Wings writes its effective configuration back to `config.yml`, environment overrides included. Starting wings once with `CALAGOPUS_DOCKER_RUNTIME_ISOLATION=container` leaves `runtime_isolation: container` in the file afterwards.
 </Warning>
+
+## Hardened seccomp
+
+Docker's default seccomp profile, and the one stock wings sends, leave open the exact entry points that Copy Fail and GhostLock use. The hardened profile closes them for every runtime: under runc it is the only thing standing between those exploits and the host kernel, and inside a Kata guest it protects the guest kernel as well.
+
+| Entry point | Used by | Docker default | Stock wings | Hardened |
+| --- | --- | --- | --- | --- |
+| `socket(AF_ALG, ...)` | Copy Fail | open | open | blocked, `EAFNOSUPPORT` |
+| `splice`, `tee` | Copy Fail, Dirty Pipe | open | open | blocked, `ENOSYS` |
+| `futex` priority inheritance ops (`LOCK_PI`, `LOCK_PI2`, `WAIT_REQUEUE_PI`, `CMP_REQUEUE_PI` and the rest) | GhostLock | open | open | blocked, `ENOSYS` |
+| `unshare` and `clone` with `CLONE_NEWUSER` | netfilter and filesystem escapes that need a user namespace | blocked | **open** | blocked, `EPERM` |
+| `keyctl` | keyring bugs | open | open | blocked, `ENOSYS` |
+| plain `futex` wait and wake | every JVM | allowed | allowed | allowed |
+
+These results come from a probe run inside containers created by wings, with the profile wings actually sent. Denied calls fail the way a kernel without the feature would, so software that checks for them falls back. `clone3` returns `ENOSYS` as well, so libc falls back to `clone`, whose flags can be filtered.
+
+<Warning>
+  Seccomp blocks known entry points, not unknown bugs. A future kernel bug in a syscall that game servers have to use, such as `read`, `write`, `mmap`, `epoll` or the TCP stack, still reaches the host kernel from a runc container. Kata blocks that too, because the server never talks to the host kernel at all.
+</Warning>
+
+The Paper egg runs unchanged with the hardened profile, install script included. If software in another egg needs one of these calls, set `container_seccomp_hardening: false` on that node.
 
 ## Kata settings
 
