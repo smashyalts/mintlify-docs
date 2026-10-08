@@ -1,0 +1,52 @@
+---
+title: "Choosing a runtime"
+description: "runc with hardened seccomp, gVisor or Kata: what each one stops and what it costs"
+icon: "scale-balanced"
+---
+
+This wings build runs servers on one of three runtimes. Each works with the stock panel, eggs and images, and each gets the [hardened seccomp profile](/wings/configuration#hardened-seccomp).
+
+|  | runc, hardened seccomp | gVisor (`runsc`) | Kata (`kata-clh`) |
+| --- | --- | --- | --- |
+| A server's syscalls go to | the host kernel, minus the calls the profile blocks | gVisor's Sentry, a kernel written in Go that runs as an unprivileged host process | its own guest kernel, inside a VM |
+| Needs `/dev/kvm` | no | no | yes |
+| Wings uses it | with `runtime_isolation: container`, or when Kata is not installed | with `docker.runtime: runsc` | on its own, once installed |
+| Satisfies `require_vm_isolation` | no | no | yes |
+
+## Attacks each one stops
+
+| Attack | runc, hardened | gVisor | Kata |
+| --- | --- | --- | --- |
+| Copy Fail, CVE-2026-31431 | yes, `AF_ALG` sockets and `splice` are blocked | yes, gVisor has no `AF_ALG` sockets and runs `splice` itself | yes, the guest kernel takes it |
+| GhostLock, CVE-2026-43499 | yes, priority inheritance futex ops are blocked | yes, futexes are implemented in the Sentry | yes |
+| Escapes through user namespaces, such as netfilter bugs | yes, `CLONE_NEWUSER` is blocked | yes, namespaces and the network stack belong to the Sentry | yes |
+| runc escapes, such as CVE-2024-21626 | no, runc starts the container on the host | yes, runc is not used | yes, runc is not used on the host |
+| The next host kernel bug, in a syscall every server makes (`read`, `mmap`, `epoll`, TCP) | no | mostly: the host kernel only sees the Sentry's own small, seccomp-filtered set of syscalls | yes |
+| What an attacker has to break after that | nothing, they are on the host | the Sentry, then its seccomp filter and namespaces | KVM, Cloud Hypervisor, virtiofsd or the Kata shim |
+
+Hardened runc stops the bugs known today. gVisor and Kata also stop most of the ones found later, because a server's code never calls the host kernel directly.
+
+## Cost
+
+The Paper egg with a 4 GiB, 200% CPU server, on a Proxmox VM. [Benchmarks](/wings/benchmarks) has every number and how they were taken.
+
+|  | runc, hardened | gVisor | Kata |
+| --- | --- | --- | --- |
+| Chunk generation | 71.7 chunks/s | 61.5 chunks/s, 12% behind runc | 56.5 chunks/s, 19% behind runc; 12% over two days of runs |
+| MSPT during chunk generation | 1.3 ms | 6.5 ms, up to 20 ms in the first seconds | 2.3 ms |
+| Boot to `Done` | 6.4 s | 9.6 s | 17.8 s |
+| Host memory at idle | 1013 MiB | 908 MiB | 1300 MiB |
+| Memory a server can take from the host | its limit | its limit | its limit, plus 256 MiB for the guest kernel and up to 260 MiB for virtiofsd |
+| Disk | none | about 320 MB | about 2.3 GB |
+
+The hardened profile itself costs nothing measurable on any of the three.
+
+## Which to use
+
+| Node | Runtime |
+| --- | --- |
+| Has `/dev/kvm`: a dedicated server, or a VM with nested virtualization | Kata, with `require_vm_isolation: true`. It is the only one where a host kernel bug of any kind stays inside one server's VM. |
+| No `/dev/kvm`, as on most VPSes | gVisor. Its boundary is software, and it boots faster and uses less memory than Kata. |
+| Boot time and density matter more than isolation | runc with the hardened profile, with the host kernel kept patched. |
+
+gVisor implements most of the Linux syscall surface but not all of it. Paper, its install script and the JVM run under it unchanged; test other eggs before moving a node.
