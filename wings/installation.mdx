@@ -124,4 +124,4 @@ A node without `/dev/kvm`, such as a VPS without nested virtualization, cannot r
 
 ## Rolling back
 
-Set `docker.runtime_isolation: container` and restart wings. Servers go back to runc on their next start. Putting the previous wings binary back does the same. The Kata runtime can stay registered in Docker, which only uses it when a container asks for it.
+Set `docker.runtime_isolation: container` and restart wings, or for gVisor clear `docker.runtime`. Servers go back to runc on their next start. Putting the previous wings binary back does the same. The Kata runtime can stay registered in Docker, which only uses it when a container asks for it.

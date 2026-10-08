@@ -30,6 +30,14 @@ docker:
       require_vm_isolation: true
     ```
   </Tab>
+  <Tab title="gVisor">
+    For a node without `/dev/kvm`. `require_vm_isolation` has to stay off:
+
+    ```yaml
+    docker:
+      runtime: runsc
+    ```
+  </Tab>
   <Tab title="Stay on runc">
     Kata is installed for other workloads, but this node keeps shared-kernel containers:
 
