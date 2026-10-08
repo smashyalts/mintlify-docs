@@ -274,7 +274,7 @@ Wings keeps its Docker executor. A server is still a Docker container built from
 | `/dev/kvm` passthrough | supported | not passed through |
 | `docker.network.mode: host` | supported | refused at boot |
 
-Servers on gVisor get the same changes, apart from host networking, which gVisor supports.
+Servers on gVisor get the same changes, except that wings does not refuse `docker.network.mode: host` for them.
 
 The panel talks to the same wings API, so the panel is not modified at all. A `config.yml` from `wings configure` or from the panel's Configuration tab works unchanged, and wings picks the Kata runtime on its own once Kata is installed.
 

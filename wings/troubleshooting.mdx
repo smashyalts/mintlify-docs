@@ -48,7 +48,15 @@ Most problems show up in the wings log at boot, or in `journalctl -u docker -u c
     ls -l /dev/kvm
     ```
 
-    On a VPS without nested virtualization the device is missing and no VM can boot. `journalctl -u containerd` has the shim's own error.
+    On a VPS without nested virtualization the device is missing and no VM can boot. `journalctl -u containerd` has the shim's own error. Such a node can run [gVisor](/wings/installation#gvisor-instead-of-kata) instead.
+  </Accordion>
+
+  <Accordion title="Software in a server fails with Function not implemented or Operation not permitted">
+    It needs a call the [hardened seccomp profile](/wings/configuration#hardened-seccomp) blocks: `splice`, `tee`, `keyctl`, an `AF_ALG` socket, a priority inheritance futex, or a new user namespace, as Chromium's sandbox and `bwrap` create. Paper and its install script need none of them. Set `container_seccomp_hardening: false` on the node that runs that egg and restart wings; servers pick up the stock profile on their next start.
+  </Accordion>
+
+  <Accordion title="Under gVisor, /sys/fs/cgroup/cpu.max is missing inside the server">
+    gVisor shows the server a cgroup v1 layout (`/sys/fs/cgroup/cpu`, `/sys/fs/cgroup/memory`) and enforces the limits through the sandbox's cgroup on the host, where live changes from the panel do arrive. Software that reads cgroup v2 files to size itself falls back to `nproc` and `/proc/meminfo`, which gVisor sets from the limits.
   </Accordion>
 
   <Accordion title="Memory shown in the panel is lower than the host uses">
