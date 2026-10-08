@@ -1,0 +1,90 @@
+---
+title: "Benchmarks"
+description: "The Paper egg on runc and on Kata, through the stock panel"
+icon: "chart-line"
+---
+
+Every run drives a stock Pterodactyl 1.15.1 panel and wings through their own APIs, the same way a real node is used:
+
+1. Create or reinstall the server from the Paper egg: Paper 26.3, the egg's Java 25 image, 4 GiB of memory, 200% CPU.
+2. Boot it once with a fresh world, then four more times.
+3. Measure idle CPU, memory and MSPT.
+4. Pre-generate 5,929 chunks with Chunky.
+5. Run `save-all flush`, then send Server List Pings.
+
+The runc runs use the same wings build with `runtime_isolation: container`, which takes stock wings' code path. Runs alternate between the runtimes, so drift on the host hits both.
+
+| | Proxmox VM | WSL2 |
+| --- | --- | --- |
+| CPU | Ryzen 9 7940HX, 8 vCPUs | Ryzen 7 7800X3D, 4 vCPUs |
+| OS | Ubuntu 24.04, kernel 6.8, Docker 29.8 | Ubuntu 24.04, WSL2 kernel 6.6, Docker 28.5 |
+| Where the Kata VM runs | inside a Proxmox VM (one level of nesting) | inside WSL2's VM, inside Hyper-V (two levels) |
+| Runs per runtime | 6 | 2 |
+
+<Warning>
+  Both hosts are virtual machines, so every Kata VM here is nested, and nesting makes VM exits and I/O round trips slower. A dedicated server runs Kata closer to runc than these numbers show. The runc numbers also include wings' default CFS burst, which lets a container briefly exceed its CPU quota. Kata servers do not get it, because their quota is enforced inside the guest.
+</Warning>
+
+## Proxmox VM
+
+| | runc | Kata | Difference |
+| --- | --- | --- | --- |
+| Chunky pre-generation | 65.3 chunks/s (±2.8) | 61.8 chunks/s (±6.1) | -5% |
+| MSPT during pre-generation | 1.3 ms | 2.3 ms | +1.0 ms |
+| MSPT idle | 0.1 ms | 0.1 ms | none |
+| `save-all flush` | 0.25 s | 0.28 s | +0.03 s |
+| Boot, wall clock | 6.4 s | 18.0 s | +11.6 s |
+| Boot, Paper's own `Done` | 5.8 s | 11.9 s | +6.1 s |
+| First boot with world generation | 9.1 s | 21.9 s | +12.8 s |
+| Egg install | 3.7 s | 7.8 s | +4.1 s |
+| Host memory at idle | 1064 MiB | 1284 MiB | +220 MiB |
+| Host CPU at idle | 1.1% | 3.0% | +1.9 points |
+| Server List Ping round trip, p50 | 0.09 ms | 0.15 ms | +0.06 ms |
+
+## WSL2
+
+| | runc | Kata | Difference |
+| --- | --- | --- | --- |
+| Chunky pre-generation | 42.8 chunks/s (±7.0) | 34.5 chunks/s (±0.2) | -19% |
+| MSPT during pre-generation | 1.9 ms | 3.3 ms | +1.4 ms |
+| Boot, wall clock | 10.6 s | 21.4 s | +10.8 s |
+| Host memory at idle | 1006 MiB | 1541 MiB | +535 MiB |
+| Server List Ping round trip, p50 | 0.21 ms | 0.37 ms | +0.16 ms |
+
+The extra layer of nesting roughly quadruples the steady-state gap. Use the Proxmox numbers for planning.
+
+## Where the difference comes from
+
+A running server pays little for the VM. Chunk generation is within about 5%, and tick times stay far below the 50 ms budget. Startup is where the VM costs time.
+
+| Part of a boot | runc | Kata |
+| --- | --- | --- |
+| Creating and starting an empty container | 0.23 s | 2.85 s |
+| Paper's own startup | 5.8 s | 11.9 s |
+
+The first line is the VM booting its kernel and the Kata agent. The second is Paper opening and reading its libraries, the server jar and the world, each file through virtio-fs. Once the server is running and those files are in the guest's cache, the difference mostly disappears.
+
+## Tuning that was tried
+
+The Kata settings in [Configuration](/wings/configuration) are the fastest that were measured, and they are also the most locked down. These were tested on the Proxmox VM and left out:
+
+| Change | Result | Kept |
+| --- | --- | --- |
+| virtiofsd thread pool of 4 instead of 1 | 63.8 chunks/s, within run-to-run noise | no |
+| virtiofsd writeback cache | 57.5 chunks/s | no |
+| Transparent huge pages always on in the guest | 58.2 chunks/s over two runs, slower | no |
+| `mitigations=off` on the guest kernel | 56.7 chunks/s, no gain, weakens the guest | no |
+| virtio-fs `cache=always` | 57.5 chunks/s, and slower saves | no |
+| initrd guest instead of the disk image | empty container 4.2 s instead of 2.85 s | no |
+| Paper's recommended G1 flags plus huge pages, on both runtimes | runc 65.0, Kata 60.7 chunks/s, no change for either | no |
+| `overhead_memory = 256` | correctness: the guest kernel no longer takes memory from the server's limit | yes |
+
+Ruled out without testing, because each one weakens isolation:
+
+- **virtio-fs DAX** maps host page cache into the guest, giving back the page-cache sharing that Copy Fail exploits.
+- **VM templating** boots VMs faster by cloning one memory image, so every server would share memory pages and kernel address layout with the others.
+- **Turning guest seccomp off** removes a filter in front of the guest kernel for a cost too small to measure.
+
+## Running it yourself
+
+`contrib/kata/bench/bench.py` in the fork runs a phase against any panel and wings pair. `compat.py` checks the panel operations that touch the runtime: console, stats, live build changes, restart and kill. It passed 8 of 8 on both hosts.

@@ -61,6 +61,7 @@
               "wings/requirements",
               "wings/installation",
               "wings/configuration",
+              "wings/benchmarks",
               "wings/troubleshooting"
             ]
           },
