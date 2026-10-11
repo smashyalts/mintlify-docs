@@ -27,7 +27,9 @@ icon: "circle-question"
     Transfers are timing out. Usually Redis: the offer never reaches the neighbour, so the handoff is reverted and the player is nudged back. `/shard info` reports Redis as up or DOWN.
   </Accordion>
   <Accordion title="Crossing works but shows a loading screen">
-    The client did not keep its world. Either the entity id could not be reused, which is logged at arrival, or the player is crossing between geos, where the fallback is a genuine reconnect.
+    The client did not keep its world. By far the most common reason is the proxy: plain Velocity, or atlas-proxy with `remove-reconfig` or `keep-client-world-on-switch` off. The proxy console says so when the Atlas plugin starts, and each shard logs `this geo's proxies do not all keep the client's world` — turn both settings on and run `/velocity reload`.
+
+    Otherwise the entity id could not be reused, which is logged at arrival, or the player is crossing between geos, where the fallback is a genuine reconnect.
 
     An id outside the reserved range — usually from a respawn on an old record — is migrated on the player's next plain login, where there is no world to keep.
   </Accordion>
