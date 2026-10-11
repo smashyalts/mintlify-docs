@@ -58,6 +58,7 @@
             "icon": "gauge",
             "pages": [
               "operate/commands",
+              "operate/base-plugins",
               "operate/audit",
               "operate/rollouts",
               "operate/troubleshooting",
