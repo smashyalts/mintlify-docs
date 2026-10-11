@@ -10,7 +10,7 @@ A plugin written for one server makes three assumptions that stop being true her
 ShardService shard = ShardAPI.get();
 ```
 
-Depend on `atlas` in your `paper-plugin.yml` so it loads first. Everything on the interface is safe from the main thread unless documented otherwise, and futures complete on the main thread.
+Compile against `atlas-api-<version>.jar` as `compileOnly` — it holds the API and the `ShardId`, `RegionGrid` and `Topology` types it uses, and the Atlas plugin provides all of it at runtime. Depend on `atlas` in your `paper-plugin.yml` so it loads first. Everything on the interface is safe from the main thread unless documented otherwise, and futures complete on the main thread.
 
 ## The checklist
 
