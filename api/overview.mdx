@@ -89,7 +89,7 @@ shard.askAt(location, "myplugin:is-safe", args).thenAccept(reply -> { ... });
 | Service | For |
 | --- | --- |
 | `messenger()` | Plugin-to-plugin messages between shards, fire and forget or request and reply |
-| `store()` | The shared database: your own collections, the raw handle, and a geo-local key/value space |
+| `store()` | The shared database: `documents(plugin, name)` for durable, network-wide JSON documents, and `kv(namespace)` for a fast, geo-local, non-durable key/value space |
 | `locks()` | Geo-local distributed locks, for "only one shard at a time does this" |
 | `scheduler()` | Run a named task on the owner of a location, and hop on and off the main thread |
 

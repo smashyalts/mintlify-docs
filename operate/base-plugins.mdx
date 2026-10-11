@@ -1,0 +1,123 @@
+---
+title: "Base plugins"
+description: "Homes, random teleport, teleport requests and warps that work across every shard"
+icon: "puzzle-piece"
+---
+
+Ordinary homes, warps and teleport plugins break on a sharded world. They teleport with `Player#teleport`, which cannot reach another server; they keep data in files on one server, which the player leaves at the next border; and they look players up in the local player list, which only holds the people on this shard.
+
+Atlas ships four that do it properly. Each is its own jar and needs nothing but Atlas.
+
+| Plugin | Jar | Commands |
+| --- | --- | --- |
+| **AtlasHomes** | `atlas-homes.jar` | `/sethome`, `/home`, `/delhome`, `/homes` |
+| **AtlasRTP** | `atlas-rtp.jar` | `/rtp` (`/wild`) |
+| **AtlasTeleport** | `atlas-teleport.jar` | `/tpa`, `/tpahere`, `/tpaccept`, `/tpdeny`, `/tpacancel`, `/tptoggle`, `/back`, `/tp`, `/tphere`, `/tppos` |
+| **AtlasWarps** | `atlas-warps.jar` | `/warp`, `/warps`, `/setwarp`, `/delwarp`, `/spawn`, `/setspawn` |
+
+## Installing
+
+Put the jars you want in `plugins/` on **every shard**, next to `atlas-paper.jar`, and restart. Not on the proxy and not on the hub.
+
+Every shard needs them, because a command can be typed on any shard and the far end of it — the shard a home is on, the shard the player you asked to teleport to is on — has to run its half.
+
+Each writes a `config.yml` on first start with every setting commented. Messages are [MiniMessage](https://docs.advntr.dev/minimessage/format.html), and setting one to `""` silences it.
+
+## What they have in common
+
+<CardGroup cols={2}>
+  <Card title="One command, any distance" icon="route">
+    Every teleport is an Atlas transfer: a local teleport when the destination is on this shard, a seamless handoff when it is on another one, in this geo or another.
+  </Card>
+  <Card title="State that follows the player" icon="suitcase">
+    Homes, `/back`, pending requests and cooldowns ride in the player's own record, so they are the same on every shard and cannot be reset by crossing a border.
+  </Card>
+  <Card title="Safe landing" icon="shield-check">
+    Before sending a player to a saved spot, the shard that owns it checks for solid ground and moves them to the nearest safe block. A spot that has been dug out is refused instead of suffocating someone.
+  </Card>
+  <Card title="Warmups and cooldowns" icon="hourglass-half">
+    Configurable per plugin. A warmup is cancelled by moving a block or taking damage. Ops bypass both by default.
+  </Card>
+</CardGroup>
+
+## AtlasHomes
+
+Homes are stored in the player's record, not on a server. A home set in region 0 works from region 3, or from a shard in another geo.
+
+| Setting | Default | |
+| --- | --- | --- |
+| `homes.default-limit` | `3` | Raise per group with `atlas.homes.limit.<n>`, or `atlas.homes.unlimited`. |
+| `homes.warmup-seconds` | `3` | |
+| `homes.cooldown-seconds` | `30` | |
+| `homes.safe-landing` | `true` | |
+
+`/home` with no name goes to the home called `home`, or to the only home if there is one; otherwise it lists them. `/homes` lists them as clickable names.
+
+## AtlasRTP
+
+`/rtp` picks a random point in a ring around a centre, anywhere on the grid, and asks the shard that owns it whether there is somewhere to stand. That shard loads the chunk without stalling, finds the surface, and refuses water, lava, and any biome on the avoid list. Only a point that passes is used; a failed one costs a few milliseconds and the next is tried.
+
+| Setting | Default | |
+| --- | --- | --- |
+| `rtp.world` | the player's world | |
+| `rtp.center-x`, `rtp.center-z` | `0`, `0` | |
+| `rtp.min-radius`, `rtp.max-radius` | `500`, `5000` | Clipped to the grid and the world border. Points are spread evenly over the ring's area. |
+| `rtp.max-attempts` | `10` | |
+| `rtp.cooldown-seconds` | `300` | |
+| `rtp.avoid-biomes` | `ocean`, `river`, `beach` | Matched as part of the biome name. |
+
+<Note>
+  Random teleport generates terrain wherever it lands that has not been generated yet. Pre-generating each region with `/shard pregen` keeps that off your players.
+</Note>
+
+## AtlasTeleport
+
+A teleport request is delivered to whichever shard the target is on. It stays with the target until it expires, so if they walk over a border before answering, `/tpaccept` still works where they end up.
+
+- **`/tpa <player>`** — accepting it summons you from wherever you are to wherever they are.
+- **`/tpahere <player>`** — accepting it sends them to wherever you are at that moment.
+- **`/tpaccept`** and **`/tpdeny`** take an optional name when several are pending; the chat message has clickable buttons.
+- **`/tptoggle`** turns incoming requests off.
+- **`/back`** returns to where you were before your last teleport — by any plugin, local or cross-shard — or where you died.
+- **`/tp <player> [target]`**, **`/tphere <player>`** and **`/tppos <x> <y> <z> [world]`** are for staff (`atlas.teleport.admin`) and find players on any shard. `/tp` replaces the vanilla command, which cannot see players on other shards; vanilla's is still `minecraft:tp`.
+
+| Setting | Default |
+| --- | --- |
+| `teleport.request-timeout-seconds` | `60` |
+| `teleport.request-cooldown-seconds` | `10` |
+| `teleport.warmup-seconds.default` | `3` |
+| `back.on-death` | `true` |
+| `back.cooldown-seconds` | `10` |
+
+## AtlasWarps
+
+Warps and the spawn are stored once, in the network's database. Setting one on any shard makes it exist on every shard straight away, and every shard also refreshes on its own each minute.
+
+| Setting | Default | |
+| --- | --- | --- |
+| `spawn.on-first-join` | `true` | A player's first ever join goes to `/setspawn`. |
+| `spawn.on-respawn` | `true` | A respawn without a bed or anchor goes to `/setspawn`. If spawn is on another shard, the player respawns where they are and is moved straight after: a respawn itself cannot cross servers. |
+| `warps.per-warp-permissions` | `false` | When on, each warp needs `atlas.warps.warp.<name>`. |
+
+## Permissions
+
+| Permission | Default | Grants |
+| --- | --- | --- |
+| `atlas.homes.use` | everyone | Homes commands |
+| `atlas.homes.limit.<n>` | — | Up to `n` homes |
+| `atlas.homes.unlimited` | op | No home limit |
+| `atlas.rtp.use` | everyone | `/rtp` |
+| `atlas.teleport.tpa` | everyone | `/tpa` and answering requests |
+| `atlas.teleport.tpahere` | everyone | `/tpahere` |
+| `atlas.teleport.back` | everyone | `/back` |
+| `atlas.teleport.back.death` | everyone | `/back` to where you died |
+| `atlas.teleport.admin` | op | `/tp`, `/tphere`, `/tppos` |
+| `atlas.warps.use` | everyone | `/warp`, `/warps` |
+| `atlas.warps.spawn` | everyone | `/spawn` |
+| `atlas.warps.manage` | op | `/setwarp`, `/delwarp`, `/setspawn` |
+| `atlas.<plugin>.bypass.cooldown` | op | Skip that plugin's cooldowns |
+| `atlas.<plugin>.bypass.warmup` | op | Skip that plugin's warmups |
+
+## Writing your own
+
+The four are small, and they are meant to be read. They live under `plugins/` in the Atlas repository and use only the [plugin API](/api/overview): `transfer` and `summon` to move players, `locate` to find them, `safeLanding` to check a destination, arrival actions to say something once the player has landed, [player data adapters](/api/player-data) for state that travels, and `store().documents(...)` for data the whole network shares.

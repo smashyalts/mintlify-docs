@@ -92,28 +92,26 @@ Registration order decides the winner, and plugin load order is not something yo
 
 This is JSON inside a database document that is written on every crossing, not a database of your own. A few hundred bytes is fine, a few hundred kilobytes is not — it rides on every handoff and is re-sent on every save.
 
-For anything larger, reference it by id and keep the rows in your own collection:
+For anything larger, reference it by id and keep the rows in your own document store:
 
 ```java
-MongoCollection<Document> mine = shard.store().collection(this, "quests");
-```
+ShardStore.ShardDocuments quests = shard.store().documents(this, "quests");
 
-The collection is namespaced to your plugin so two plugins cannot collide. Calls to it block, so use `shard.scheduler().async(...)`.
-
-## Changing state together
-
-If two documents must change as one — an economy transfer, a trade — use the transaction helper:
-
-```java
-shard.store().transaction(session -> {
-    // pass the session to every call inside
-    return null;
+shard.scheduler().async(() -> {
+    quests.put(questId, questJson);          // insert or replace
+    return quests.get(questId);               // JsonObject, or null
 });
 ```
 
-<Note>
-This needs a replica set. On a standalone it fails loudly rather than half-applying, which is the right failure. Nothing in the crossing path uses it, so a standalone is otherwise fully supported.
-</Note>
+It is a MongoDB collection namespaced to your plugin, `<plugin>_quests`, shared by every shard and geo, and it speaks Gson. Calls block, so run them through `shard.scheduler().async(...)`.
+
+<Warning>
+  Do not use `store().collection(...)`, `database()`, `transaction(...)` or `playerRecord(...)`. The Atlas jar relocates its MongoDB driver so it cannot clash with another plugin's, which rewrites those signatures: at runtime they return `gg.atlas.shard.libs.mongodb` types rather than the `com.mongodb` ones your plugin compiled against, and the call fails with `NoSuchMethodError`. They are deprecated for that reason. `documents(...)` uses Gson, which the server provides unrelocated, so it works from any plugin.
+</Warning>
+
+## Changing state together
+
+There is no transaction API a plugin can call yet: the old `transaction(...)` helper takes a relocated driver type, so it is unusable from outside Atlas. Until there is, keep anything that must change as one in a single document — `put` replaces a whole document atomically — or in the player's adapter data, which is written atomically with the rest of their record.
 
 ## Per-player preferences
 
