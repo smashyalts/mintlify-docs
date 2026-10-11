@@ -23,16 +23,16 @@ On a panel that is **four servers you rent** — two shards, a hub, a proxy — 
 
 | Component | Version | Note |
 | --- | --- | --- |
-| Paper | 26.2, or any fork at 26.2 | Purpur, Pufferfish and friends are fine. Spigot, CraftBukkit and Folia are not. A different *Minecraft* version will not load. |
-| Velocity | 4.0.0 | |
+| Paper | 26.2 or 26.3, or any fork of either | Purpur, Pufferfish and friends are fine. Spigot, CraftBukkit and Folia are not. Every shard and the hub on the **same** version. |
+| Proxy | atlas-proxy | Velocity 4 with seamless switching; ships with Atlas. Plain Velocity works, with a loading screen at every border. |
 | Java | 25 | **Check your panel offers it before you buy.** This is the usual blocker. |
 | MongoDB | any | A standalone `mongod` is fine. |
 | Redis | any recent | One per network, not shared with anything. |
 
-Roughly 6 GB of RAM across the four servers, and the two Atlas jars: `atlas-paper.jar` for the shards, `atlas-velocity.jar` for the proxy.
+Roughly 6 GB of RAM across the four servers, your licence key, and the Atlas jars: `atlas-paper.jar` for the shards, `atlas-velocity.jar` for the proxy's plugin, and `atlas-proxy.jar`, the proxy itself.
 
 <Warning>
-  Most panels do not offer Java 25 or a pinned Paper 26.2 egg yet, and neither is something you can work around from inside the container. Confirm both with your host first — a mismatch is a startup crash, not a degradation.
+  Most panels do not offer Java 25 or a Paper 26.2 or 26.3 egg yet, and neither is something you can work around from inside the container. Confirm both with your host first — a mismatch is a startup crash, not a degradation.
 </Warning>
 
 ## On a panel specifically
@@ -72,12 +72,16 @@ What players build in region 0 lives only on region 0's server. That is the poin
 </Step>
 
 <Step title="Start the proxy once to get a forwarding secret">
-Install Velocity on the proxy server, start it, stop it. It writes `velocity.toml` and a `forwarding.secret`. You need that secret before the shards can be configured, which is why the proxy comes first.
+Use `atlas-proxy.jar` as the proxy server's jar — it is Velocity, so a Velocity egg runs it — then start it and stop it. It writes `velocity.toml` and a `forwarding.secret`. You need that secret before the shards can be configured, which is why the proxy comes first.
 
 ```toml velocity.toml
 online-mode = true
 player-info-forwarding-mode = "modern"
 forwarding-secret-file = "forwarding.secret"
+
+# What makes a crossing seamless: the client keeps its world.
+remove-reconfig = true
+keep-client-world-on-switch = true
 
 [servers]
 hub = "10.0.0.5:25570"
@@ -88,6 +92,8 @@ try = [
 
 [forced-hosts]
 ```
+
+Both switches are off in a fresh `velocity.toml`; without them every border is a loading screen. See [The proxy](/deploy/requirements#the-proxy).
 
 **Only the hub is listed.** The shards register themselves out of MongoDB from their `shard.address`, so listing them here is neither needed nor wanted. Clear `[forced-hosts]` as well: a forced host naming a server that does not exist fails Velocity's own validation and the proxy will not start.
 </Step>
@@ -176,6 +182,17 @@ proxies:
 </Warning>
 </Step>
 
+<Step title="Add your licence key">
+The same key goes into `plugins/atlas/config.yml` on **both shards and the proxy**:
+
+```yaml plugins/atlas/config.yml
+license:
+  key: "XXXXX-XXXXX-XXXXX-XXXXX-XXXXX"
+```
+
+Without a valid key a shard will not start and the proxy turns everyone away — the console says which. If the licence server cannot be reached, a server that has verified before keeps running for up to two days while it retries. [Licence](/deploy/configuration#licence) has the details.
+</Step>
+
 <Step title="Set up the hub">
 The hub is a plain Paper server with the same `paper-global.yml` forwarding block and **no Atlas plugin** — it owns no region, so there is nothing for the plugin to do there. It needs no copy of the shards' world; any world will do.
 
@@ -229,7 +246,7 @@ Spawn at 0,0 sits **exactly on the border**, in region 1 — the square starting
 
 Turn on `/shard walls` first and the boundary is drawn as a particle curtain. `/shard bar` puts your shard, your ping and the distance to the next border in a boss bar.
 
-What you should see: no loading screen, your inventory intact, and the ground on the far side already drawn before you got there. What you should **not** see is a disconnect — if you get one, the forwarding secret is wrong on the shard you were walking into.
+What you should see: no loading screen, your inventory intact, and the ground on the far side already drawn before you got there. A loading screen means the proxy is not keeping the client's world — its console names the setting. What you should **not** see is a disconnect — if you get one, the forwarding secret is wrong on the shard you were walking into.
 </Step>
 
 </Steps>
@@ -295,6 +312,8 @@ With [border chunks](/concepts/border-chunks) each shard generates and stores on
 | Players routed to the wrong server | The grid block differs somewhere, or two networks share one Redis |
 | A visible seam at the border | `border-chunks` is off on a shard, the seeds differ, or the owner has not generated that stretch yet — see `/shard mirror` |
 | The proxy will not start | `[forced-hosts]` still names a server that does not exist |
+| A loading screen at every border | The proxy is plain Velocity, or `remove-reconfig` / `keep-client-world-on-switch` is off — the proxy console says which |
+| A shard logs `licence refused` and disables Atlas | `license.key` missing or wrong in that server's `config.yml` |
 | A panel variable you set does nothing | `config.yml` exists and wins over the environment |
 
 More in [Troubleshooting](/operate/troubleshooting).

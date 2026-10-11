@@ -11,7 +11,7 @@ A four-region network is not four servers.
 | What | How many | Why |
 | --- | --- | --- |
 | Paper shards | one per region | Each is the only writer for its square. |
-| Velocity proxy | one | Routes logins and performs every crossing. |
+| Proxy ([atlas-proxy](#the-proxy)) | one | Routes logins and performs every crossing. |
 | Hub | one | Where players wait while a shard restarts. |
 | MongoDB | one | Player records, topology, the block journal. |
 | Redis | one per geo | Ghost frames, block deltas, transfer offers. |
@@ -24,14 +24,14 @@ The hub is not strictly required — without one a drain logs an error and leave
 
 ## Versions
 
-Atlas reaches into the server for things Bukkit does not expose, which fixes two things: it needs **Paper or a fork of it**, and it is built against **one Minecraft version**.
+Atlas reaches into the server for things Bukkit does not expose, which fixes two things: it needs **Paper or a fork of it**, and it is built for **specific Minecraft versions** — currently 26.2 and 26.3, each tested end to end with real clients.
 
-Paper forks are fine — Purpur, Pufferfish, Leaf, Gale and anything else downstream inherit what it uses. Spigot and CraftBukkit are not, and neither is Folia, which has a different threading model entirely. What it will not survive is a different *Minecraft* version; a different Paper build of the same version is fine. The versions pinned in `gradle.properties` are pinned so the build is reproducible.
+Paper forks are fine — Purpur, Pufferfish, Leaf, Gale and anything else downstream inherit what it uses. Spigot and CraftBukkit are not, and neither is Folia, which has a different threading model entirely. What it will not survive is a Minecraft version it was not built for; a different Paper build of a supported version is fine. Every shard and the hub must run the **same** Minecraft version. The versions pinned in `gradle.properties` are pinned so the build is reproducible.
 
 | Component | Version |
 | --- | --- |
-| Paper | 26.2, or any fork of it at 26.2 |
-| Velocity | 4.0.0 |
+| Paper | 26.2 or 26.3, or any fork of either — the same one everywhere |
+| Proxy | atlas-proxy, shipped alongside the Atlas jars ([below](#the-proxy)) |
 | Java | 25 |
 | MongoDB | any, standalone is fine |
 | Redis | any recent |
@@ -39,6 +39,29 @@ Paper forks are fine — Purpur, Pufferfish, Leaf, Gale and anything else downst
 <Warning>
 Check the Java and Minecraft versions your host actually offers before committing. A Minecraft version mismatch is a startup crash, not a degradation, and on shared hosting you often cannot pick. Which Paper fork it is does not matter.
 </Warning>
+
+## The proxy
+
+A crossing is seamless because the client never rebuilds its world: the proxy withholds the destination server's join-game and respawn, and the shard turns its login teleport into a no-op. Plain Velocity cannot do the first half — every server switch sends the client through the configuration screen and a terrain reload.
+
+**atlas-proxy** is Velocity 4 with that switch added, and it is what Atlas ships with. Use its jar as the proxy server's jar (any Velocity egg runs it) and turn both settings on in `velocity.toml`:
+
+```toml velocity.toml
+remove-reconfig = true
+keep-client-world-on-switch = true
+```
+
+The proxy says which it is when the Atlas plugin starts:
+
+```
+this proxy keeps the client's world on a switch: border crossings are seamless
+```
+
+Anything else is logged as a warning naming the setting to change. Each proxy also reports it to the shards, and a shard only neutralises the login teleport when **every** proxy in its geo keeps the client's world — so plain Velocity, or one proxy with a setting off, still works, with a loading screen at each border instead of a player stranded at the origin.
+
+<Note>
+`remove-reconfig` assumes every backend runs the same Minecraft version, because the client keeps the registries it received from the first server it joined. On an Atlas network that is already a requirement.
+</Note>
 
 ## MongoDB: a standalone is fine
 

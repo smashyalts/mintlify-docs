@@ -43,9 +43,20 @@ RCON is enabled on the shards, so the operator commands can be driven from a scr
 python3 /opt/atlas-test/rcon.py r0 25575 atlastest "shard topology"
 ```
 
+## Real clients
+
+`docker-test/bot` drives the network with real Minecraft 26.2 and 26.3 clients. Released mineflayer stops at 26.1, so its `setup.sh` installs pinned versions and adds the newer protocols from PrismarineJS's open pull requests, plus what a 26.3 server enforces that nothing upstream does yet.
+
+```bash
+cd docker-test/bot && ./setup.sh
+MC=26.3 node scenario.js
+```
+
+The scenario joins two players, crosses the border both ways, checks the inventory came along exactly once and the lease moved with a higher fence, runs the [base plugins](/operate/base-plugins) across shards — homes, warps, spawn, `/tpa`, `/back`, `/rtp` — then quits, rejoins and checks nothing exists twice. The client version must match the servers', and the proxy needs [both seamless settings](/deploy/requirements#the-proxy) on.
+
 ## What it cannot check yet
 
-It cannot walk a player across a border. No headless client speaks this protocol version — node-minecraft-protocol stops one release short — so the crossing, the ghost band, the block mirror and the audit log still need a person with a real client.
+The ghost band, the block mirror and the audit log are still checked by a person with a real client: the bot sees them, but nothing yet asserts what it should see.
 
 <Warning>
 The proxy in the harness runs `online-mode = false` so a test client can connect without a Mojang account. That is the one setting deliberately unlike production; see [Security](/deploy/security).

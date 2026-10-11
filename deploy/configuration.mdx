@@ -38,10 +38,24 @@ SHARD_GRID_REGION_SIZE: 2048
 | `proxy.name` | `SHARD_PROXY_NAME` | hostname | This proxy's name, if you run more than one. |
 | `proxy.hub` | `SHARD_HUB_PREFIX` | `hub-` | The hub's server name. Matches `hub` too. |
 | `shard.wan-address` | `SHARD_WAN_ADDRESS` | unset | This shard's `host:port` as seen from another geo. Cross-geo only. |
+| `license.key` | `SHARD_LICENSE_KEY` | unset | Your Atlas licence key. Every shard and the proxy; see [Licence](#licence). |
 
 <Warning>
 The shard refuses to start if `shard.world` names a world that is not loaded. A shard owning a region of a world it cannot see would accept players and drop them into nothing.
 </Warning>
+
+## Licence
+
+Every shard and the proxy check `license.key` when they start, and again every 15 minutes.
+
+| Situation | What happens |
+| --- | --- |
+| Valid | Runs. The console says `licence verified`. |
+| Refused at start — unknown, expired or suspended key | A shard disables Atlas and will not take players; the proxy turns every login away. |
+| The licence server cannot be reached | A server that verified before keeps running for up to **two days**, retrying every 15 minutes, and says how long is left. After two days without contact it shuts down. A server that has never verified does not start. |
+| Revoked while running | New logins are refused; players already online are not affected. The next restart will not start. |
+
+The two days count from the last successful check and are kept in `plugins/atlas/license-state.properties`; deleting that file does not extend them, it ends them.
 
 ## Databases
 

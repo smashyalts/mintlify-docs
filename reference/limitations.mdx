@@ -49,7 +49,7 @@ icon: "triangle-exclamation"
 
     **Paper, or anything downstream of it.** Purpur, Pufferfish, Leaf, Gale and the like all work, because they inherit Paper's API and internals. Spigot and CraftBukkit do not: the plugin uses Paper's Brigadier commands, its configuration-phase connection event, its Netty channel listener, and its rewritten chunk system. **Folia does not work either** — the plugin uses the Bukkit scheduler and assumes one main thread throughout.
 
-    **One Minecraft version.** Roughly two dozen `net.minecraft` classes are used directly, and those are renamed and reshaped between versions, so a 26.2 build does not run on 26.3. This is the constraint that bites.
+    **Specific Minecraft versions.** Roughly two dozen `net.minecraft` classes are used directly, and those can be renamed and reshaped between versions, so each release is built and tested for the versions it names — currently 26.2 and 26.3, both end to end. A new Minecraft version needs a release that has been checked against it. This is the constraint that bites.
 
     A different *build* of the same version is not a problem, and the build pinned in `gradle.properties` is pinned so the build is reproducible, not because the plugin refuses others. The one caveat: the chunk system classes are server internals with no compatibility promise, so a build that reorganises them could break it — which is exactly why the pin exists for building.
   </Accordion>

@@ -42,7 +42,7 @@ Without the vertical part, a player who crosses mid-jump or mid-fall is placed a
 
 ## The client keeps its world
 
-A server switch normally makes the client throw its world away and rebuild it, which is the terrain loading screen. Three things prevent it:
+A server switch normally makes the client throw its world away and rebuild it, which is the terrain loading screen. It is the proxy that stops that: atlas-proxy, with `remove-reconfig` and `keep-client-world-on-switch` on, withholds the destination's join-game and respawn so the client never hears it changed servers. Each proxy reports whether it does, and the shards only do their half when every proxy in the geo does — behind plain Velocity a crossing reloads the world instead. Given that, three things make it seamless:
 
 <AccordionGroup>
   <Accordion title="The entity id travels with the player" icon="fingerprint">
@@ -55,6 +55,10 @@ A server switch normally makes the client throw its world away and rebuild it, w
     Because the respawn packet is suppressed, the client keeps every mob and item the previous shard sent it, and the new shard never knew they existed. The source lists them in the handoff and the destination removes them before its own tracker sends anything.
   </Accordion>
 </AccordionGroup>
+
+<Note>
+A teleport to another shard — `/home`, `/warp`, `/tpa`, or any plugin calling `transfer` — keeps the client's world too, but its login teleport is **not** neutralised: moving the player to where they were sent is the point of it. It also lands exactly on the requested spot, never carried forward from where the player was standing when they used the command.
+</Note>
 
 ## Opening the connection early
 
