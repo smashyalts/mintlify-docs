@@ -16,33 +16,9 @@ A 2x2 grid with both right-hand regions halved — `1 x 1 5` and `3 x 3 4`:
 +--------+----+----+
 ```
 
-`/shard split` plans it, the old shard hands the new part over as files when it next starts, and you upload those files to the new server. Nobody copies region files by hand.
+You stand on the shard, run `/shard split`, and restart the network. The split is recorded in MongoDB, where every shard and the proxy read their grid, so **no config file is edited anywhere**. The old shard hands the new part over as files when it next starts, and you upload those files to the new server. Nobody copies region files by hand.
 
-## How a split is written
-
-The grid gains one line per split, under `grid.splits`, on **every shard and the proxy**:
-
-```yaml plugins/atlas/config.yml
-grid:
-  region-size: 2048
-  regions-x: 2
-  regions-z: 2
-  splits:
-    - "1 x 1 5"
-    - "3 x 3 4"
-```
-
-Each line is `<region> <how> <parts...>`:
-
-| How | Parts, in order | Example |
-| --- | --- | --- |
-| `x` | west half, east half | `"1 x 1 5"` — region 1 keeps the west half, the east half is the new region 5 |
-| `z` | north half, south half | `"1 z 1 5"` |
-| `quad` | north-west, north-east, south-west, south-east | `"1 quad 1 5 6 7"` |
-
-One part keeps the region's number, which is the shard already running there; the others are new numbers for new servers. A part can be split again with another line — `"5 x 5 8"` quarters the east half — and lines are applied in order.
-
-Every region is still one rectangle, so crossings, ghosts, the block mirror and border chunks work across the new line exactly as across any other. Each part must be at least 256 blocks and a whole number of chunks on each side, and the ghost band can be at most a quarter of the smallest region.
+The same command is how an existing single server becomes a sharded network — see [Moving an existing server onto Atlas](/deploy/migrating).
 
 ## Doing it
 
@@ -64,19 +40,28 @@ Region 1 is x[0,2048) z[-1024,1024), 2048x2048 blocks. It can be split:
 New parts get the lowest free numbers. Pick your own with `/shard split x 1 7`.
 </Step>
 
-<Step title="Plan it">
+<Step title="Split it">
 ```
 /shard split x
 ```
 
-It prints the grid block every server needs and writes it to `plugins/atlas/split/grid-for-every-server.yml`. **Nothing changes yet.** To cancel, delete `plugins/atlas/split-plan.json` before restarting.
-</Step>
+```
+Planned: region 1 becomes 1 x[0,1024) z[-1024,1024) and 2 x[1024,2048) z[-1024,1024).
+The new grid is recorded in MongoDB, so no config file needs editing: every shard and the proxy read it when they start.
+```
 
-<Step title="Give every server the new grid">
-Paste that grid block into `plugins/atlas/config.yml` on every shard **and** the proxy. Like any grid change this is a full restart, not a rolling one — do it with nobody online.
+**The world is not changed yet**, and every server keeps running the grid it started with. Each of them now says so, once, and `/shard topology` shows it:
+
+```
+PENDING -- MongoDB now holds the grid 2048/2x1;1 x 1 2; it takes effect when the whole network restarts.
+```
+
+Changed your mind? `/shard split cancel` on the same shard takes it back out of MongoDB, any time before the restart.
 </Step>
 
 <Step title="Restart the network">
+Restart every shard and the proxy together. Like any grid change this is a full restart, not a rolling one — do it with nobody online. A server restarted on its own before the rest picks up the new grid early, and every node will report a [grid mismatch](#if-the-grid-is-not-the-same-everywhere) until the others follow.
+
 Before its world loads, the shard you split exports the new part and removes it from its own world:
 
 ```
@@ -84,8 +69,6 @@ split: exported region 2 to plugins/atlas/split/region-2 -- 1389 chunks of terra
 split: removed region 2 from this world -- 729 chunks of terrain, 1 of entities, 0 of points of interest
 split "1 x 1 2" done in 94ms. This server now owns x[0,1024) z[-1024,1024).
 ```
-
-It only does this once the grid in its config is the planned one. Restart it with the old grid and it says so and touches nothing.
 
 Until the new server is up, players standing in the new part are sent to the hub.
 </Step>
@@ -103,13 +86,37 @@ Everything it needs is in `plugins/atlas/split/region-<n>/` on the old shard —
 </Step>
 </Steps>
 
+Only one split can wait for a restart at a time. A second `/shard split`, on any shard, is refused until the network has restarted onto the first one — or it has been cancelled — so two operators cannot cut the map at once.
+
+## How a split is written
+
+Each split is one line, `<region> <how> <parts...>`, kept in MongoDB in the `grid` collection, one document per world:
+
+| How | Parts, in order | Example |
+| --- | --- | --- |
+| `x` | west half, east half | `"1 x 1 5"` — region 1 keeps the west half, the east half is the new region 5 |
+| `z` | north half, south half | `"1 z 1 5"` |
+| `quad` | north-west, north-east, south-west, south-east | `"1 quad 1 5 6 7"` |
+
+One part keeps the region's number, which is the shard already running there; the others are new numbers for new servers. A part can be split again — run `/shard split` on its shard — and splits apply in the order they were made.
+
+Every region is still one rectangle, so crossings, ghosts, the block mirror and border chunks work across the new line exactly as across any other. Each part must be at least 256 blocks and a whole number of chunks on each side, and the ghost band can be at most a quarter of the smallest region.
+
+The base grid — `region-size`, `regions-x`, `regions-z` — stays in `config.yml`, where it is set once.
+
+<Note>
+**Had splits in `grid.splits`?** That still works. The first shard to start copies them into MongoDB, and from then on MongoDB is the one that counts: a config that disagrees is ignored, with a warning that names both. You can delete `grid.splits` from every config once it has been copied.
+</Note>
+
 ## What moves, and what does not
 
 | | |
 | --- | --- |
-| **Moves to the new server** | The part's terrain, block entities, entities and points of interest; a corridor of terrain around it, so its borders show real ground from the first second; the world's seed and generator settings; `level.dat` and the datapacks; a `config.yml` with the old shard's settings and the new region number. |
+| **Moves to the new server** | The part's terrain, block entities, entities and points of interest; a corridor of terrain around it, so its borders show real ground from the first second; the world's seed and generator settings; `level.dat` and the datapacks; the players' vanilla files; a `config.yml` with the old shard's settings and the new region number. |
 | **Removed from the old shard** | Every entity and point of interest in the new part, and its terrain except the corridor the old shard still shows along its new border — so nothing that now belongs to the new server can also be found, killed or picked up on the old one. |
 | **Does not move** | Players. Their records are in MongoDB; anyone standing in the new part is routed to the new server at their next login or crossing. |
+
+The players' vanilla files are there for anyone MongoDB has never seen — somebody who has not logged in since the world went onto Atlas. Whichever server they land on, they keep their things and their place. Everyone else's record is in MongoDB and the files are never read for them.
 
 Whole region files are copied as files; only the files the new line runs through are cut, chunk by chunk, without decompressing anything.
 
@@ -119,10 +126,10 @@ The exported `config.yml` holds the old shard's settings, database passwords inc
 
 ## If the grid is not the same everywhere
 
-Every shard publishes its grid, and every shard and proxy compares the others' with its own. A box that missed the new line is named, loudly, in every console:
+Every shard publishes its grid, and every shard and proxy compares the others' with its own. A server that is running a different grid — usually one restarted before the rest after a split — is named, loudly, in every console:
 
 ```
 GRID MISMATCH: shard main:world:0 runs grid 2048/2x1 but this node has 2048/2x1;1 x 1 2. ...
 ```
 
-`/shard topology` shows it too. It clears itself once the grids agree.
+`/shard topology` shows it too. Restart the servers still on the old grid; it clears itself once they agree.

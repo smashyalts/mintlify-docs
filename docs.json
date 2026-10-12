@@ -49,6 +49,7 @@
               "deploy/requirements",
               "deploy/shared-hosting",
               "deploy/configuration",
+              "deploy/migrating",
               "deploy/security",
               "deploy/protection"
             ]

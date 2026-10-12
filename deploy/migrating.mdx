@@ -1,0 +1,100 @@
+---
+title: "Moving an existing server onto Atlas"
+description: "Shard a world that already has players, without anybody losing their things"
+icon: "truck-ramp-box"
+---
+
+You do not need a fresh world to use Atlas. Your server becomes **one shard that covers the whole world**, players log in and keep everything, and when it gets busy you [split](/operate/splitting) it — in half, in four, and again — handing each new part to a new server as files.
+
+```text
+ your server           one shard, 1x1          /shard split quad         and again, where it is busy
++-----------+         +-----------+            +-----+-----+             +-----+--+--+
+|           |         |           |            |  0  |  1  |             |  0  |1 |4 |
+|   world   |   -->   |     0     |    -->     +-----+-----+     -->     +-----+--+--+
+|           |         |           |            |  2  |  3  |             |  2  |  3  |
++-----------+         +-----------+            +-----+-----+             +-----+-----+
+```
+
+## What players keep
+
+The first time somebody logs in after Atlas goes on, Atlas has no record of them, but the server has their vanilla player file. It is **adopted**: inventory, ender chest, health, hunger, experience, effects — and where they were standing. They do not start over at spawn, and first-join handling such as a spawn warp does not fire for them, because they are not new.
+
+```
+adopting the vanilla playerdata of 10920508-..., from before this world was sharded, at (600, 90, 0)
+```
+
+From their first save on, their record is in MongoDB and that is what every shard uses. The file is never read for them again.
+
+If their place is on another shard's ground by then — they had not logged in since before a split — they arrive on whichever shard the proxy picked and are sent straight on to the right one, with their things:
+
+```
+adopting the vanilla playerdata of faa5dca3-..., from before this world was sharded; (-500, 62, 0) is region 0's, so they go there once they are here
+```
+
+This works because a split's export carries every player's vanilla file to the new server. Nobody who stayed away during the move loses anything.
+
+## Doing it
+
+<Steps>
+<Step title="Back up the world">
+Stop the server and copy the whole server folder somewhere safe. Nothing below deletes anything, but a backup is what makes that a fact rather than a promise.
+</Step>
+
+<Step title="Pick a grid that covers the whole world">
+The grid is centred on `0, 0`. A 1x1 grid of size `S` covers x and z from `-S/2` to `S/2`, so `S` must be at least twice the distance from `0, 0` to the farthest place anybody has built — or to your world border.
+
+Pick a power of two — `8192`, `16384`, `32768` — so it can be halved cleanly over and over: every split halves a side, and each part has to stay at least 256 blocks and a whole number of chunks.
+
+| Built out to | `region-size` | After one `quad` | After two |
+| --- | --- | --- | --- |
+| ±4,000 | `8192` | four of 4096 | down to 2048 |
+| ±8,000 | `16384` | four of 8192 | down to 4096 |
+| ±16,000 | `32768` | four of 16384 | down to 8192 |
+
+Anybody standing outside the grid keeps their things but starts at spawn, and the server logs a warning naming the grid. Size it generously.
+</Step>
+
+<Step title="Put the proxy in front">
+Players connect to the Atlas proxy, not to your server. Set it up as in the [Quickstart](/quickstart): the proxy, its plugin, the hub, a forwarding secret, and `online-mode=false` on the Paper server. The world folder stays where it is.
+</Step>
+
+<Step title="Install Atlas on your server">
+Add `atlas-paper` to `plugins/`, and give it region 0 of a 1x1 grid:
+
+```yaml plugins/atlas/config.yml
+shard:
+  world: world
+  region: 0
+  address: "your-server:25565"
+database:
+  mongo:
+    uri: "mongodb://..."
+  redis:
+    uri: "redis://..."
+grid:
+  region-size: 16384
+  regions-x: 1
+  regions-z: 1
+license:
+  key: "<your licence key>"
+```
+
+Give the proxy's `plugins/atlas/config.yml` the same `grid` block. See [Configuration](/deploy/configuration) for everything else.
+</Step>
+
+<Step title="Start it">
+Start the proxy and the server. `/shard topology` shows one region, alive. Players log in exactly where they were, with their things.
+
+You are now running Atlas on one shard. Nothing has to happen next until the server is busy.
+</Step>
+
+<Step title="Split when it gets busy">
+Stand on the shard and follow [Splitting a shard](/operate/splitting): `/shard split quad`, restart, and bring up a server from each folder it exports. Do it again on whichever part is still busy. No config file is edited for any of it.
+</Step>
+</Steps>
+
+## Worth knowing
+
+- **The overworld is what Atlas shards.** The Nether and the End are not: each shard has its own, a split does not copy them, and somebody who was in either when Atlas went on keeps their things but starts at spawn.
+- **Statistics stay per server**, as vanilla keeps them. Advancements travel with the player.
+- **Same Minecraft version everywhere** — every shard and the hub. See [Requirements](/deploy/requirements).
