@@ -1,0 +1,128 @@
+---
+title: "Splitting a shard"
+description: "Give a busy region more servers without touching the rest of the map"
+icon: "scissors"
+---
+
+When one region is where everybody lives, you do not have to rebuild the grid. Split that region in half — or in four — and give the new part its own server. The rest of the map, and every other shard, stays exactly as it is.
+
+A 2x2 grid with both right-hand regions halved — `1 x 1 5` and `3 x 3 4`:
+
+```text
++--------+----+----+
+|   0    | 1  | 5  |
++--------+----+----+
+|   2    | 3  | 4  |
++--------+----+----+
+```
+
+`/shard split` plans it, the old shard hands the new part over as files when it next starts, and you upload those files to the new server. Nobody copies region files by hand.
+
+## How a split is written
+
+The grid gains one line per split, under `grid.splits`, on **every shard and the proxy**:
+
+```yaml plugins/atlas/config.yml
+grid:
+  region-size: 2048
+  regions-x: 2
+  regions-z: 2
+  splits:
+    - "1 x 1 5"
+    - "3 x 3 4"
+```
+
+Each line is `<region> <how> <parts...>`:
+
+| How | Parts, in order | Example |
+| --- | --- | --- |
+| `x` | west half, east half | `"1 x 1 5"` — region 1 keeps the west half, the east half is the new region 5 |
+| `z` | north half, south half | `"1 z 1 5"` |
+| `quad` | north-west, north-east, south-west, south-east | `"1 quad 1 5 6 7"` |
+
+One part keeps the region's number, which is the shard already running there; the others are new numbers for new servers. A part can be split again with another line — `"5 x 5 8"` quarters the east half — and lines are applied in order.
+
+Every region is still one rectangle, so crossings, ghosts, the block mirror and border chunks work across the new line exactly as across any other. Each part must be at least 256 blocks and a whole number of chunks on each side, and the ghost band can be at most a quarter of the smallest region.
+
+## Doing it
+
+<Steps>
+<Step title="See what a split would give">
+On the shard you want to split:
+
+```
+/shard split
+```
+
+```
+Region 1 is x[0,2048) z[-1024,1024), 2048x2048 blocks. It can be split:
+  /shard split x  ->  1 (this server) x[0,1024) z[-1024,1024), 2 (new) x[1024,2048) z[-1024,1024)
+  /shard split z  ->  1 (this server) x[0,2048) z[-1024,0), 2 (new) x[0,2048) z[0,1024)
+  /shard split quad  ->  1 (this server) x[0,1024) z[-1024,0), 2 (new) ...
+```
+
+New parts get the lowest free numbers. Pick your own with `/shard split x 1 7`.
+</Step>
+
+<Step title="Plan it">
+```
+/shard split x
+```
+
+It prints the grid block every server needs and writes it to `plugins/atlas/split/grid-for-every-server.yml`. **Nothing changes yet.** To cancel, delete `plugins/atlas/split-plan.json` before restarting.
+</Step>
+
+<Step title="Give every server the new grid">
+Paste that grid block into `plugins/atlas/config.yml` on every shard **and** the proxy. Like any grid change this is a full restart, not a rolling one — do it with nobody online.
+</Step>
+
+<Step title="Restart the network">
+Before its world loads, the shard you split exports the new part and removes it from its own world:
+
+```
+split: exported region 2 to plugins/atlas/split/region-2 -- 1389 chunks of terrain (4 files whole, 6 cut), 1 of entities, 0 of points of interest
+split: removed region 2 from this world -- 729 chunks of terrain, 1 of entities, 0 of points of interest
+split "1 x 1 2" done in 94ms. This server now owns x[0,1024) z[-1024,1024).
+```
+
+It only does this once the grid in its config is the planned one. Restart it with the old grid and it says so and touches nothing.
+
+Until the new server is up, players standing in the new part are sent to the hub.
+</Step>
+
+<Step title="Bring up the new server">
+Everything it needs is in `plugins/atlas/split/region-<n>/` on the old shard — download that folder from your panel.
+
+1. A new Paper server, same Minecraft version and plugins as the others.
+2. Copy the `world` folder from the export into the server folder.
+3. Copy the export's `config.yml` to `plugins/atlas/config.yml` and set `SHARD_ADDRESS` in it to the address the proxy dials.
+4. `server.properties` and `config/paper-global.yml` as on the other shards — same forwarding secret, `online-mode=false`.
+5. Start it.
+
+`/shard topology` on any server should now list the new region as alive.
+</Step>
+</Steps>
+
+## What moves, and what does not
+
+| | |
+| --- | --- |
+| **Moves to the new server** | The part's terrain, block entities, entities and points of interest; a corridor of terrain around it, so its borders show real ground from the first second; the world's seed and generator settings; `level.dat` and the datapacks; a `config.yml` with the old shard's settings and the new region number. |
+| **Removed from the old shard** | Every entity and point of interest in the new part, and its terrain except the corridor the old shard still shows along its new border — so nothing that now belongs to the new server can also be found, killed or picked up on the old one. |
+| **Does not move** | Players. Their records are in MongoDB; anyone standing in the new part is routed to the new server at their next login or crossing. |
+
+Whole region files are copied as files; only the files the new line runs through are cut, chunk by chunk, without decompressing anything.
+
+<Warning>
+The exported `config.yml` holds the old shard's settings, database passwords included. Keep it out of anything public.
+</Warning>
+
+## If the grid is not the same everywhere
+
+Every shard publishes its grid, and every shard and proxy compares the others' with its own. A box that missed the new line is named, loudly, in every console:
+
+```
+GRID MISMATCH: shard main:world:0 runs grid 2048/2x1 but this node has 2048/2x1;1 x 1 2. ...
+```
+
+`/shard topology` shows it too. It clears itself once the grids agree.

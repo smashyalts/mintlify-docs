@@ -61,6 +61,7 @@
               "operate/base-plugins",
               "operate/audit",
               "operate/rollouts",
+              "operate/splitting",
               "operate/troubleshooting",
               "operate/testing"
             ]
