@@ -67,16 +67,17 @@ The two days count from the last successful check and are kept in `plugins/atlas
 
 ## The grid
 
-These three decide which region a given block belongs to.
+These decide which region a given block belongs to.
 
 | Path | Variable | Default | Constraint |
 | --- | --- | --- | --- |
 | `grid.region-size` | `SHARD_GRID_REGION_SIZE` | `2048` | At least 256, a multiple of 16 |
 | `grid.regions-x` | `SHARD_GRID_REGIONS_X` | `2` | At least 1 |
 | `grid.regions-z` | `SHARD_GRID_REGIONS_Z` | `2` | At least 1 |
+| `grid.splits` | `SHARD_GRID_SPLITS` | none | Regions cut into smaller ones, e.g. `- "1 x 1 5"`; `;`-separated in the variable. See [Splitting a shard](/operate/splitting) |
 
 <Warning>
-Identical on every shard and every proxy. A server that disagrees routes players to a shard that does not own where they are standing. Leaving all three unset is the safest way to keep them in step.
+Identical on every shard and every proxy. A server that disagrees routes players to a shard that does not own where they are standing. Leaving the size and counts unset is the safest way to keep them in step, and every node names any live shard whose grid differs from its own.
 </Warning>
 
 ## Tuning
