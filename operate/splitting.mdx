@@ -46,9 +46,12 @@ New parts get the lowest free numbers. Pick your own with `/shard split x 1 7`.
 ```
 
 ```
+Working on it -- the answer follows here and in the server log.
 Planned: region 1 becomes 1 x[0,1024) z[-1024,1024) and 2 x[1024,2048) z[-1024,1024).
 The new grid is recorded in MongoDB, so no config file needs editing: every shard and the proxy read it when they start.
 ```
+
+Recording the split is a round trip to MongoDB, so it runs in the background and the answer arrives a moment later. Over RCON only the first line comes back -- the rest is in the server log, every line prefixed `/shard split`.
 
 **The world is not changed yet**, and every server keeps running the grid it started with. Each of them now says so, once, and `/shard topology` shows it:
 
@@ -70,7 +73,7 @@ split: removed region 2 from this world -- 729 chunks of terrain, 1 of entities,
 split "1 x 1 2" done in 94ms. This server now owns x[0,1024) z[-1024,1024).
 ```
 
-Until the new server is up, nobody can get into the new part: anyone walking toward it is stopped at the line with *That area is not available right now*. Somebody who logged out standing there and logs back in before it is up starts at spawn instead -- and stays there, because spawn is then where they are. Bring the new server up before letting players back on, and nobody loses their place.
+Until the new server is up, nobody can get into the new part: anyone walking toward it is stopped at the line with *That area is not available right now*. Somebody who logged out standing there and logs back in waits in the hub, and is sent back to exactly where they were the moment the new server is up. Without a hub server they start at spawn instead, and keep that position.
 </Step>
 
 <Step title="Bring up the new server">
