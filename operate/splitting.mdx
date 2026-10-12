@@ -70,7 +70,7 @@ split: removed region 2 from this world -- 729 chunks of terrain, 1 of entities,
 split "1 x 1 2" done in 94ms. This server now owns x[0,1024) z[-1024,1024).
 ```
 
-Until the new server is up, players standing in the new part are sent to the hub.
+Until the new server is up, nobody can get into the new part: anyone walking toward it is stopped at the line with *That area is not available right now*. Somebody who logged out standing there and logs back in before it is up starts at spawn instead -- and stays there, because spawn is then where they are. Bring the new server up before letting players back on, and nobody loses their place.
 </Step>
 
 <Step title="Bring up the new server">
@@ -114,7 +114,7 @@ The base grid — `region-size`, `regions-x`, `regions-z` — stays in `config.y
 | --- | --- |
 | **Moves to the new server** | The part's terrain, block entities, entities and points of interest; a corridor of terrain around it, so its borders show real ground from the first second; the world's seed and generator settings; `level.dat` and the datapacks; the players' vanilla files; a `config.yml` with the old shard's settings and the new region number. |
 | **Removed from the old shard** | Every entity and point of interest in the new part, and its terrain except the corridor the old shard still shows along its new border — so nothing that now belongs to the new server can also be found, killed or picked up on the old one. |
-| **Does not move** | Players. Their records are in MongoDB; anyone standing in the new part is routed to the new server at their next login or crossing. |
+| **Does not move** | Players. Their records are in MongoDB; anyone standing in the new part is routed to the new server at their next login or crossing, once it is up. |
 
 The players' vanilla files are there for anyone MongoDB has never seen — somebody who has not logged in since the world went onto Atlas. Whichever server they land on, they keep their things and their place. Everyone else's record is in MongoDB and the files are never read for them.
 

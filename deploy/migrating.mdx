@@ -63,6 +63,7 @@ Add `atlas-paper` to `plugins/`, and give it region 0 of a 1x1 grid:
 
 ```yaml plugins/atlas/config.yml
 shard:
+  geo: main
   world: world
   region: 0
   address: "your-server:25565"
@@ -79,7 +80,7 @@ license:
   key: "<your licence key>"
 ```
 
-Give the proxy's `plugins/atlas/config.yml` the same `grid` block. See [Configuration](/deploy/configuration) for everything else.
+`geo` is only a name for this network -- any short word, the same on every server and the proxy; the shard will not start without it. Give the proxy's `plugins/atlas/config.yml` the same `geo` and the same `grid` block. See [Configuration](/deploy/configuration) for everything else.
 </Step>
 
 <Step title="Start it">
