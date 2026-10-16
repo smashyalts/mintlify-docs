@@ -41,9 +41,11 @@ A dash means no live owner. Players there are sent to the hub and the ground is 
 
 ### /shard time
 
-Setting the time on one shard alone does not work: a follower is corrected back within the second. This sends an explicit set that every shard applies immediately.
+Sets the time on every shard of the world at once. Vanilla `/time set` and `/weather` work on any shard too: the change is sent to every shard of the world.
 
-One shard is the clock — the lowest-numbered region that is alive — and it broadcasts the time and weather every second. The others follow. The leader is derived rather than elected, so there is no election to get stuck, and if it dies the next-lowest takes over within a heartbeat.
+**Region 0 owns the sky.** Its shard runs the weather and broadcasts the time and the weather every second, and every other shard follows. A night slept through on any shard is skipped for the whole world, once enough of the players on that shard are asleep.
+
+While region 0 is down, the other shards keep the weather they have and their clocks keep running. When it comes back it takes the current sky from them before it leads again, so nobody is thrown back to the moment it stopped.
 
 ## /audit
 
